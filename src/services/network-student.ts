@@ -23,7 +23,9 @@ export class StudentNetworkService {
                 const packet = JSON.parse(msg.toString()) as BeaconPacket;
                 if (packet.type === PacketType.BEACON) {
                     // Send found class to UI
-                    this.mainWindow.send(CHANNELS.TEACHER_BEACON, packet);
+                    if (!this.mainWindow.isDestroyed()) {
+                        this.mainWindow.send(CHANNELS.TEACHER_BEACON, packet);
+                    }
                 }
             } catch (e) {
                 // Ignore invalid packets
@@ -54,7 +56,9 @@ export class StudentNetworkService {
             this.wasKicked = false;
             this.socket?.emit(CHANNELS.SET_USER_INFO, info);
             this.stopDiscovery(); // Stop listening once connected
-            this.mainWindow.send(CHANNELS.STUDENT_STATUS_UPDATE, 'connected');
+            if (!this.mainWindow.isDestroyed()) {
+                this.mainWindow.send(CHANNELS.STUDENT_STATUS_UPDATE, 'connected');
+            }
         });
 
         this.socket.on(CHANNELS.LOCK_STUDENT, () => {
@@ -74,9 +78,13 @@ export class StudentNetworkService {
             ipcMain.emit(CHANNELS.UNLOCK_STUDENT); // Safety unlock
 
             if (this.wasKicked) {
-                this.mainWindow.send(CHANNELS.STUDENT_STATUS_UPDATE, 'kicked');
+                if (!this.mainWindow.isDestroyed()) {
+                    this.mainWindow.send(CHANNELS.STUDENT_STATUS_UPDATE, 'kicked');
+                }
             } else {
-                this.mainWindow.send(CHANNELS.STUDENT_STATUS_UPDATE, 'disconnected');
+                if (!this.mainWindow.isDestroyed()) {
+                    this.mainWindow.send(CHANNELS.STUDENT_STATUS_UPDATE, 'disconnected');
+                }
                 this.startDiscovery(); // Resume searching
             }
         });

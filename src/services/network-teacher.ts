@@ -170,6 +170,8 @@ export class TeacherNetworkService {
     }
 
     private broadcastStudentList() {
-        this.mainWindow.send(CHANNELS.GET_STUDENTS, Array.from(this.students.values()));
+        if (!this.mainWindow.isDestroyed()) {
+            this.mainWindow.send(CHANNELS.GET_STUDENTS, Array.from(this.students.values()));
+        }
     }
 }
