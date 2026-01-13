@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attentive CMS</title>
+    <!-- Basic Reset & Style -->
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f2f5;
+            color: #1c1e21;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        #root {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root"></div>
+    <!-- Since we don't have a bundler running, we assume the user will set up the build. 
+         But typically this file would point to the built bundle. 
+         I will point to a 'renderer.js' which would be the output of tsc for the UI. -->
+    <!-- We point to the compiled JS file in the same directory (dist/ui) -->
+    <script>
+        require('./index.js'); 
+    </script>
+</body>
+
+</html>

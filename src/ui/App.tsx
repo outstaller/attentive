@@ -1,0 +1,305 @@
+import React, { useState, useEffect } from 'react';
+import ReactDOM from 'react-dom/client';
+import { ipcRenderer } from 'electron';
+import { CHANNELS, UI_STRINGS } from '../shared/constants';
+import { BeaconPacket, Student } from '../shared/types';
+
+// --- Type Extensions ---
+// Since we are not using a full build pipeline with proper global extension via d.ts for this snippet
+// we assume ipcRenderer is available globally or via import.
+
+const App = () => {
+    const [mode, setMode] = useState<'selection' | 'teacher' | 'student'>('selection');
+
+    // teacher state
+    const [teacherName, setTeacherName] = useState('המורה יוסי');
+    const [className, setClassName] = useState('מתמטיקה ח׳3');
+    const [isClassStarted, setIsClassStarted] = useState(false);
+    const [students, setStudents] = useState<Student[]>([]);
+
+    // student state
+    const [studentName, setStudentName] = useState('');
+    const [studentGrade, setStudentGrade] = useState('');
+    const [discoveredClasses, setDiscoveredClasses] = useState<BeaconPacket[]>([]);
+    const [connectedStatus, setConnectedStatus] = useState<'disconnected' | 'connected' | 'kicked'>('disconnected');
+    const [connectedTeacher, setConnectedTeacher] = useState<string>('');
+
+    // Load Settings
+    useEffect(() => {
+        const loadSettings = async () => {
+            const tName = await ipcRenderer.invoke(CHANNELS.STORE_GET, 'teacherName');
+            if (tName) setTeacherName(tName);
+            const cName = await ipcRenderer.invoke(CHANNELS.STORE_GET, 'className');
+            if (cName) setClassName(cName);
+            const sName = await ipcRenderer.invoke(CHANNELS.STORE_GET, 'studentName');
+            if (sName) setStudentName(sName);
+            const sGrade = await ipcRenderer.invoke(CHANNELS.STORE_GET, 'studentGrade');
+            if (sGrade) setStudentGrade(sGrade);
+
+            // Check for enforced mode
+            const enforcedMode = await ipcRenderer.invoke(CHANNELS.APP_MODE);
+            if (enforcedMode === 'teacher') {
+                setMode('teacher');
+                // Auto-start?? Maybe just show teacher dashboard ready to start.
+                // User still needs to click Start Class usually, but if we want seamless:
+                // For now, just switching to the view is enough.
+            } else if (enforcedMode === 'student') {
+                setMode('student');
+                // Auto-start discovery
+                ipcRenderer.send(CHANNELS.START_STUDENT);
+            }
+        };
+        loadSettings();
+    }, []);
+
+    const saveSetting = (key: string, val: string) => {
+        ipcRenderer.send(CHANNELS.STORE_SET, key, val);
+    };
+
+    useEffect(() => {
+        // Teacher Listeners
+        ipcRenderer.on(CHANNELS.GET_STUDENTS, (e, list: Student[]) => {
+            setStudents(list);
+        });
+
+        // Student Listeners
+        ipcRenderer.on(CHANNELS.TEACHER_BEACON, (e, packet: BeaconPacket) => {
+            setDiscoveredClasses(prev => {
+                // Avoid duplicates
+                if (prev.some(c => c.ip === packet.ip && c.port === packet.port)) return prev;
+                return [...prev, packet];
+            });
+        });
+
+        ipcRenderer.on(CHANNELS.STUDENT_STATUS_UPDATE, (e, status) => {
+            setConnectedStatus(status);
+        });
+
+        return () => {
+            ipcRenderer.removeAllListeners(CHANNELS.GET_STUDENTS);
+            ipcRenderer.removeAllListeners(CHANNELS.TEACHER_BEACON);
+            ipcRenderer.removeAllListeners(CHANNELS.STUDENT_STATUS_UPDATE);
+        };
+    }, []);
+
+    const startTeacher = () => {
+        ipcRenderer.send(CHANNELS.START_TEACHER, { name: teacherName, className });
+        setIsClassStarted(true);
+    };
+
+    const startStudentMode = () => {
+        setMode('student');
+        ipcRenderer.send(CHANNELS.START_STUDENT);
+    };
+
+    const connectToClass = (cls: BeaconPacket) => {
+        if (!studentName || !studentGrade) {
+            alert('אנא מלא שם וכיתה');
+            return;
+        }
+        ipcRenderer.send(CHANNELS.CONNECT_TO_CLASS, {
+            ip: cls.ip,
+            port: cls.port,
+            studentInfo: { name: studentName, grade: studentGrade }
+        });
+        setConnectedTeacher(cls.teacher);
+    };
+
+    const lockAll = () => ipcRenderer.send(CHANNELS.LOCK_ALL);
+    const unlockAll = () => ipcRenderer.send(CHANNELS.UNLOCK_ALL);
+    const lockStudent = (id: string) => ipcRenderer.send(CHANNELS.LOCK_STUDENT, id);
+    const unlockStudent = (id: string) => ipcRenderer.send(CHANNELS.UNLOCK_STUDENT, id);
+    const kickAll = () => ipcRenderer.send(CHANNELS.KICK_ALL);
+    const kickStudent = (id: string) => ipcRenderer.send(CHANNELS.KICK_STUDENT, id);
+
+    // --- Render Selection ---
+    if (mode === 'selection') {
+        return (
+            <div style={styles.container}>
+                <h1>ברוכים הבאים ל-Attentive</h1>
+                <div style={styles.row}>
+                    <button style={styles.bigButton} onClick={() => setMode('teacher')}>אני מורה 👨‍🏫</button>
+                    <button style={styles.bigButton} onClick={startStudentMode}>אני תלמיד 👨‍🎓</button>
+                </div>
+            </div>
+        );
+    }
+
+    // --- Render Teacher ---
+    if (mode === 'teacher') {
+        return (
+            <div style={styles.container}>
+                <div style={styles.header}>
+                    <img src="assets/logo.png" style={{ position: 'absolute', top: 10, left: 10, height: 50 }} alt="logo" />
+                    <h2>{UI_STRINGS.teacher.dashboardTitle} - {teacherName.replace(/^המורה\s+/, '')}</h2>
+                </div>
+
+                {!isClassStarted ? (
+                    <div style={styles.card}>
+                        <h3>{UI_STRINGS.teacher.setupTitle}</h3>
+                        <input
+                            style={styles.input}
+                            placeholder={UI_STRINGS.teacher.teacherName}
+                            value={teacherName}
+                            onChange={e => { setTeacherName(e.target.value); saveSetting('teacherName', e.target.value); }}
+                        />
+                        <input
+                            style={styles.input}
+                            placeholder={UI_STRINGS.teacher.className}
+                            value={className}
+                            onChange={e => { setClassName(e.target.value); saveSetting('className', e.target.value); }}
+                        />
+                        <button style={styles.primaryButton} onClick={startTeacher}>{UI_STRINGS.teacher.startClass}</button>
+                    </div>
+                ) : (
+                    <div style={{ ...styles.card, width: '90%' }}>
+                        <div style={styles.controls}>
+                            <div>
+                                <strong>שיעור: {className} </strong> | IP: {require('ip').address()}
+                            </div>
+                            <div style={{ display: 'flex', gap: 10 }}>
+                                <button style={styles.dangerButton} onClick={lockAll}>{UI_STRINGS.teacher.lockAll}</button>
+                                <button style={styles.successButton} onClick={unlockAll}>{UI_STRINGS.teacher.unlockAll}</button>
+                                <button style={{ ...styles.dangerButton, background: '#8b0000', marginLeft: 0 }} onClick={kickAll}>{UI_STRINGS.teacher.disconnectAll}</button>
+                            </div>
+                        </div>
+                        <div style={{ padding: '0 20px', marginBottom: 10, fontWeight: 'bold' }}>
+                            {UI_STRINGS.teacher.students}: {students.length}
+                        </div>
+                        <div style={styles.grid}>
+                            {students.map(s => (
+                                <div key={s.id} style={{ ...styles.studentCard, border: s.status === 'locked' ? '2px solid red' : '1px solid #ddd' }}>
+                                    <div style={styles.studentName}>{s.name}</div>
+                                    <div style={styles.studentGrade}>{s.grade}</div>
+                                    <div style={styles.status}>{s.status === 'locked' ? UI_STRINGS.teacher.statusLocked : UI_STRINGS.teacher.statusActive}</div>
+                                    <div style={styles.actions}>
+                                        {s.status === 'locked' ? (
+                                            <IconButton onClick={() => unlockStudent(s.id)} icon="🔓" title={UI_STRINGS.teacher.unlockStudent} />
+                                        ) : (
+                                            <IconButton onClick={() => lockStudent(s.id)} icon="🔒" title={UI_STRINGS.teacher.lockStudent} />
+                                        )}
+                                        <IconButton onClick={() => kickStudent(s.id)} icon="❌" title={UI_STRINGS.teacher.kickStudent} />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div >
+        );
+    }
+
+    // --- Render Student ---
+    if (mode === 'student') {
+        if (connectedStatus === 'connected') {
+            return (
+                <div style={styles.container}>
+                    <div style={styles.successMessage}>
+                        <h1>✅</h1>
+                        <h2>{UI_STRINGS.student.connectedTo} {connectedTeacher}</h2>
+                        <p>{UI_STRINGS.student.waitingForTeacher}</p>
+                    </div>
+                </div>
+            )
+        }
+
+        if (connectedStatus === 'kicked') {
+            return (
+                <div style={styles.container}>
+                    <div style={{ ...styles.card, textAlign: 'center' }}>
+                        <h1>🚫</h1>
+                        <h2>{UI_STRINGS.student.disconnectedByTeacher}</h2>
+                        <button style={styles.primaryButton} onClick={() => {
+                            setConnectedStatus('disconnected');
+                            // Start discovery again effectively by just resetting state
+                            ipcRenderer.send(CHANNELS.START_STUDENT);
+                        }}>{UI_STRINGS.student.backToMain}</button>
+                    </div>
+                </div>
+            )
+        }
+
+        return (
+            <div style={styles.container}>
+                <div style={styles.card}>
+                    <h3>{UI_STRINGS.student.registrationTitle}</h3>
+                    <input
+                        style={styles.input}
+                        placeholder={UI_STRINGS.student.fullName}
+                        value={studentName}
+                        onChange={e => { setStudentName(e.target.value); saveSetting('studentName', e.target.value); }}
+                    />
+                    <input
+                        style={styles.input}
+                        placeholder={UI_STRINGS.student.grade}
+                        value={studentGrade}
+                        onChange={e => { setStudentGrade(e.target.value); saveSetting('studentGrade', e.target.value); }}
+                    />
+                </div>
+
+                <div style={styles.card}>
+                    <h3>{UI_STRINGS.student.classChooserTitle}</h3>
+                    {discoveredClasses.length === 0 && <p>{UI_STRINGS.student.scanning}</p>}
+                    <div style={styles.list}>
+                        {discoveredClasses.map((cls, i) => (
+                            <div key={i} style={styles.listItem} onClick={() => connectToClass(cls)}>
+                                <strong>{cls.class}</strong> - {cls.teacher}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    return null;
+};
+
+// --- Styles ---
+const styles: { [key: string]: React.CSSProperties } = {
+    container: { padding: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', gap: 20 },
+    row: { display: 'flex', gap: 20 },
+    header: { width: '100%', borderBottom: '1px solid #ccc', paddingBottom: 10, marginBottom: 20 },
+    card: { background: 'white', padding: 20, borderRadius: 8, boxShadow: '0 2px 5px rgba(0,0,0,0.1)', width: 400, display: 'flex', flexDirection: 'column', gap: 10 },
+    bigButton: { padding: '20px 40px', fontSize: 20, cursor: 'pointer', borderRadius: 8, border: 'none', background: '#007bff', color: 'white' },
+    input: { padding: 10, fontSize: 16, borderRadius: 4, border: '1px solid #ccc', textAlign: 'right' }, // RTL
+    primaryButton: { padding: 10, background: '#007bff', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' },
+    dangerButton: { padding: 10, background: '#dc3545', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' },
+    successButton: { padding: 10, background: '#28a745', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' },
+    controls: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, width: '100%' },
+    grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 15, width: '100%' },
+    studentCard: { padding: 15, background: 'white', borderRadius: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column', alignItems: 'center' },
+    studentName: { fontWeight: 'bold', fontSize: 18 },
+    studentGrade: { color: '#666' },
+    status: { margin: '5px 0', fontSize: 12 },
+    actions: { marginTop: 10, display: 'flex', gap: 10 },
+    list: { display: 'flex', flexDirection: 'column', gap: 10 },
+    listItem: { padding: 10, border: '1px solid #eee', borderRadius: 4, cursor: 'pointer', background: '#f9f9f9' },
+    successMessage: { textAlign: 'center', marginTop: 50 },
+};
+
+const IconButton = ({ onClick, icon, title, color = 'black' }: { onClick: () => void, icon: string, title: string, color?: string }) => {
+    const [hover, setHover] = useState(false);
+    return (
+        <button
+            onClick={onClick}
+            title={title}
+            onMouseEnter={() => setHover(true)}
+            onMouseLeave={() => setHover(false)}
+            style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '1.2em',
+                transform: hover ? 'scale(1.2)' : 'scale(1)',
+                transition: 'transform 0.2s',
+                color: color
+            }}
+        >
+            {icon}
+        </button>
+    );
+};
+
+const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement);
+root.render(<App />);

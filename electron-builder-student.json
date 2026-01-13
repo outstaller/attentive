@@ -1,0 +1,28 @@
+{
+    "appId": "com.attentive.student",
+    "productName": "Attentive Student",
+    "directories": {
+        "output": "release/student"
+    },
+    "files": [
+        "dist/**/*",
+        "package.json"
+    ],
+    "extraMetadata": {
+        "appMode": "student"
+    },
+    "win": {
+        "target": "nsis",
+        "forceCodeSigning": false,
+        "icon": "build/icon.png"
+    },
+    "nsis": {
+        "oneClick": false,
+        "perMachine": true,
+        "allowToChangeInstallationDirectory": true,
+        "include": "build/installer.nsh"
+    },
+    "extraResources": [
+        "student.flag"
+    ]
+}

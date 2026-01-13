@@ -1,0 +1,175 @@
+import dgram from 'dgram';
+import { Server as SocketIOServer, Socket } from 'socket.io';
+import http from 'http';
+import { ipcMain, WebContents } from 'electron';
+import { UDP_PORT, TCP_PORT, CHANNELS } from '../shared/constants';
+import { Student, PacketType, BeaconPacket } from '../shared/types';
+import * as ip from 'ip';
+import os from 'os';
+
+export class TeacherNetworkService {
+    private udpSocket: dgram.Socket | null = null;
+    private io: SocketIOServer | null = null;
+    private httpServer: http.Server | null = null;
+    private beaconTimer: NodeJS.Timeout | null = null;
+    private students: Map<string, Student> = new Map(); // socketId -> Student
+    private isClassLocked: boolean = false;
+    private mainWindow: WebContents;
+
+    constructor(webContents: WebContents) {
+        this.mainWindow = webContents;
+    }
+
+    public async start(className: string, teacherName: string) {
+        this.startUDPServer(className, teacherName);
+        this.startSocketServer();
+    }
+
+    public stop() {
+        if (this.beaconTimer) clearInterval(this.beaconTimer);
+        if (this.udpSocket) this.udpSocket.close();
+        if (this.io) this.io.close();
+        if (this.httpServer) this.httpServer.close();
+        this.students.clear();
+    }
+
+    private startUDPServer(className: string, teacherName: string) {
+        this.udpSocket = dgram.createSocket('udp4');
+
+        // Allow broadcast
+        this.udpSocket.bind(() => {
+            this.udpSocket?.setBroadcast(true);
+            console.log('UDP Beacon started');
+        });
+
+        const localIp = ip.address();
+        const packet: BeaconPacket = {
+            type: PacketType.BEACON,
+            teacher: teacherName,
+            class: className,
+            ip: localIp,
+            port: TCP_PORT,
+        };
+
+        this.beaconTimer = setInterval(() => {
+            const interfaces = os.networkInterfaces();
+
+            for (const name of Object.keys(interfaces)) {
+                for (const iface of interfaces[name] || []) {
+                    // Skip internal (127.0.0.1) and non-IPv4
+                    if (iface.family === 'IPv4' && !iface.internal) {
+
+                        // Calculate Broadcast Address - Fallback to .255 assumption
+                        const parts = iface.address.split('.');
+                        parts[3] = '255';
+                        const broadcastAddr = parts.join('.');
+
+                        // Update packet with the correct IP for this interface so student connects to right one
+                        const interfacePacket = { ...packet, ip: iface.address };
+                        const message = Buffer.from(JSON.stringify(interfacePacket));
+
+                        this.udpSocket?.send(message, UDP_PORT, broadcastAddr, (err) => {
+                            if (err) console.error(`Error sending beacon on ${name}:`, err);
+                        });
+
+                        // Also try global broadcast 255.255.255.255 as fallback
+                        this.udpSocket?.send(message, UDP_PORT, '255.255.255.255', () => { });
+                    }
+                }
+            }
+        }, 2000);
+    }
+    private startSocketServer() {
+        this.httpServer = http.createServer();
+        this.io = new SocketIOServer(this.httpServer, {
+            cors: { origin: '*' }
+        });
+
+        this.io.on('connection', (socket: Socket) => {
+            console.log('Student connected:', socket.id);
+
+            socket.on(CHANNELS.SET_USER_INFO, (info: { name: string; grade: string }) => {
+                const student: Student = {
+                    id: socket.id,
+                    name: info.name,
+                    grade: info.grade,
+                    ip: socket.handshake.address,
+                    status: this.isClassLocked ? 'locked' : 'active',
+                    lastSeen: Date.now(),
+                };
+                this.students.set(socket.id, student);
+                this.broadcastStudentList();
+
+                // Sync lock state
+                if (this.isClassLocked) {
+                    socket.emit(CHANNELS.LOCK_STUDENT);
+                }
+            });
+
+            socket.on('disconnect', () => {
+                this.students.delete(socket.id);
+                this.broadcastStudentList();
+            });
+        });
+
+        this.httpServer.listen(TCP_PORT, () => {
+            console.log(`Socket.io Server running on port ${TCP_PORT}`);
+        });
+    }
+
+    public lockAll() {
+        this.isClassLocked = true;
+        this.io?.emit(CHANNELS.LOCK_STUDENT);
+        this.updateAllStatuses('locked');
+    }
+
+    public unlockAll() {
+        this.isClassLocked = false;
+        this.io?.emit(CHANNELS.UNLOCK_STUDENT);
+        this.updateAllStatuses('active');
+    }
+
+    public lockStudent(socketId: string) {
+        this.io?.to(socketId).emit(CHANNELS.LOCK_STUDENT);
+        this.updateStudentStatus(socketId, 'locked');
+    }
+
+    public unlockStudent(socketId: string) {
+        this.io?.to(socketId).emit(CHANNELS.UNLOCK_STUDENT);
+        this.updateStudentStatus(socketId, 'active');
+    }
+
+    public kickStudent(socketId: string) {
+        this.io?.to(socketId).emit(CHANNELS.KICK_STUDENT);
+        const socket = this.io?.sockets.sockets.get(socketId);
+        if (socket) {
+            socket.disconnect(true);
+        }
+        // The disconnect handler will clean up the map and broadcast
+    }
+
+    public kickAll() {
+        this.io?.emit(CHANNELS.KICK_STUDENT);
+        this.io?.sockets.sockets.forEach((socket) => {
+            socket.disconnect(true);
+        });
+        // The disconnect handlers will clean up
+    }
+
+    private updateAllStatuses(status: 'active' | 'locked') {
+        this.students.forEach(s => s.status = status);
+        this.broadcastStudentList();
+    }
+
+    private updateStudentStatus(id: string, status: 'active' | 'locked') {
+        const s = this.students.get(id);
+        if (s) {
+            s.status = status;
+            this.broadcastStudentList();
+        }
+    }
+
+    private broadcastStudentList() {
+        this.mainWindow.send(CHANNELS.GET_STUDENTS, Array.from(this.students.values()));
+    }
+}
