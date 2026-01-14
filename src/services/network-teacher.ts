@@ -16,11 +16,14 @@ export class TeacherNetworkService {
     private isClassLocked: boolean = false;
     private mainWindow: WebContents;
 
+    private password: string = '';
+
     constructor(webContents: WebContents) {
         this.mainWindow = webContents;
     }
 
-    public async start(className: string, teacherName: string) {
+    public async start(className: string, teacherName: string, password?: string) {
+        this.password = password || '';
         this.startUDPServer(className, teacherName);
         this.startSocketServer();
     }
@@ -49,6 +52,7 @@ export class TeacherNetworkService {
             class: className,
             ip: localIp,
             port: TCP_PORT,
+            isSecured: !!this.password,
         };
 
         this.beaconTimer = setInterval(() => {
@@ -83,6 +87,17 @@ export class TeacherNetworkService {
         this.httpServer = http.createServer();
         this.io = new SocketIOServer(this.httpServer, {
             cors: { origin: '*' }
+        });
+
+        // Middleware for password verification
+        this.io.use((socket, next) => {
+            if (this.password) {
+                const handshakePassword = socket.handshake.auth.password;
+                if (handshakePassword !== this.password) {
+                    return next(new Error('Invalid password'));
+                }
+            }
+            next();
         });
 
         this.io.on('connection', (socket: Socket) => {

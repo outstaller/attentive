@@ -45,11 +45,20 @@ export class StudentNetworkService {
         }
     }
 
-    public connectToClass(ip: string, port: number, info: { name: string; grade: string }) {
+    public connectToClass(ip: string, port: number, info: { name: string; grade: string }, password?: string) {
         if (this.socket) this.socket.disconnect();
 
         this.connectedClass = { ip, port };
-        this.socket = io(`http://${ip}:${port}`);
+        this.socket = io(`http://${ip}:${port}`, {
+            auth: { password }
+        });
+
+        this.socket.on('connect_error', (err) => {
+            console.error('Connection error:', err.message);
+            if (!this.mainWindow.isDestroyed()) {
+                this.mainWindow.send(CHANNELS.STUDENT_STATUS_UPDATE, 'error', err.message);
+            }
+        });
 
         this.socket.on('connect', () => {
             console.log('Connected to teacher');

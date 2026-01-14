@@ -25,4 +25,5 @@ export interface BeaconPacket {
     class: string;
     ip: string;
     port: number;
+    isSecured: boolean;
 }

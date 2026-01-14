@@ -26,6 +26,10 @@ const App = () => {
     const [discoveredClasses, setDiscoveredClasses] = useState<BeaconPacket[]>([]);
     const [connectedStatus, setConnectedStatus] = useState<'disconnected' | 'connected' | 'kicked'>('disconnected');
     const [connectedTeacher, setConnectedTeacher] = useState<string>('');
+    const [teacherPassword, setTeacherPassword] = useState('');
+    const [passwordPromptClass, setPasswordPromptClass] = useState<BeaconPacket | null>(null);
+    const [inputPassword, setInputPassword] = useState('');
+    const [errorMessage, setErrorMessage] = useState('');
 
     // Load Settings
     useEffect(() => {
@@ -68,14 +72,30 @@ const App = () => {
         // Student Listeners
         ipcRenderer.on(CHANNELS.TEACHER_BEACON, (e, packet: BeaconPacket) => {
             setDiscoveredClasses(prev => {
-                // Avoid duplicates
-                if (prev.some(c => c.ip === packet.ip && c.port === packet.port)) return prev;
+                const index = prev.findIndex(c => c.ip === packet.ip && c.port === packet.port);
+                if (index !== -1) {
+                    // Update existing if changed
+                    if (JSON.stringify(prev[index]) !== JSON.stringify(packet)) {
+                        const newClasses = [...prev];
+                        newClasses[index] = packet;
+                        return newClasses;
+                    }
+                    return prev;
+                }
                 return [...prev, packet];
             });
         });
 
-        ipcRenderer.on(CHANNELS.STUDENT_STATUS_UPDATE, (e, status) => {
-            setConnectedStatus(status);
+        ipcRenderer.on(CHANNELS.STUDENT_STATUS_UPDATE, (e, status, msg) => {
+            if (status === 'error') {
+                setErrorMessage(msg === 'Invalid password' ? UI_STRINGS.student.incorrectPassword : msg);
+            } else {
+                setConnectedStatus(status);
+                if (status === 'connected') {
+                    setPasswordPromptClass(null);
+                    setErrorMessage('');
+                }
+            }
         });
 
         return () => {
@@ -86,7 +106,7 @@ const App = () => {
     }, []);
 
     const startTeacher = () => {
-        ipcRenderer.send(CHANNELS.START_TEACHER, { name: teacherName, className });
+        ipcRenderer.send(CHANNELS.START_TEACHER, { name: teacherName, className, password: teacherPassword });
         setIsClassStarted(true);
     };
 
@@ -95,15 +115,27 @@ const App = () => {
         ipcRenderer.send(CHANNELS.START_STUDENT);
     };
 
-    const connectToClass = (cls: BeaconPacket) => {
+    const handleClassClick = (cls: BeaconPacket) => {
         if (!studentName || !studentGrade) {
             alert('אנא מלא שם וכיתה');
             return;
         }
+
+        if (cls.isSecured) {
+            setPasswordPromptClass(cls);
+            setInputPassword('');
+            setErrorMessage('');
+        } else {
+            performConnect(cls);
+        }
+    };
+
+    const performConnect = (cls: BeaconPacket, password?: string) => {
         ipcRenderer.send(CHANNELS.CONNECT_TO_CLASS, {
             ip: cls.ip,
             port: cls.port,
-            studentInfo: { name: studentName, grade: studentGrade }
+            studentInfo: { name: studentName, grade: studentGrade },
+            password
         });
         setConnectedTeacher(cls.teacher);
     };
@@ -210,6 +242,13 @@ const App = () => {
                             value={className}
                             onChange={e => { setClassName(e.target.value); saveSetting('className', e.target.value); }}
                         />
+                        <input
+                            style={styles.input}
+                            placeholder={UI_STRINGS.teacher.password}
+                            value={teacherPassword}
+                            type="password"
+                            onChange={e => setTeacherPassword(e.target.value)}
+                        />
                         <button style={styles.primaryButton} onClick={startTeacher}>{UI_STRINGS.teacher.startClass}</button>
                     </div>
                 ) : (
@@ -304,12 +343,43 @@ const App = () => {
                     {discoveredClasses.length === 0 && <p>{UI_STRINGS.student.scanning}</p>}
                     <div style={styles.list}>
                         {discoveredClasses.map((cls, i) => (
-                            <div key={i} style={styles.listItem} onClick={() => connectToClass(cls)}>
-                                <strong>{cls.class}</strong> - {cls.teacher}
+                            <div key={i} style={styles.listItem} onClick={() => handleClassClick(cls)}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <strong>{cls.class}</strong> - {cls.teacher}
+                                    </div>
+                                    {cls.isSecured && <span>🔑</span>}
+                                </div>
                             </div>
                         ))}
                     </div>
                 </div>
+
+                {passwordPromptClass && (
+                    <div style={{
+                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                        backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center'
+                    }}>
+                        <div style={styles.card}>
+                            <h3>{UI_STRINGS.student.enterPassword}</h3>
+                            <p>{UI_STRINGS.student.connectedTo} {passwordPromptClass.class}</p>
+                            <input
+                                style={styles.input}
+                                type="password"
+                                placeholder={UI_STRINGS.student.passwordPlaceholder}
+                                value={inputPassword}
+                                onChange={e => setInputPassword(e.target.value)}
+                            />
+                            {errorMessage && <p style={{ color: 'red' }}>{errorMessage}</p>}
+                            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                                <button style={styles.dangerButton} onClick={() => setPasswordPromptClass(null)}>ביטול</button>
+                                <button style={styles.primaryButton} onClick={() => performConnect(passwordPromptClass, inputPassword)}>
+                                    {UI_STRINGS.student.connect}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }

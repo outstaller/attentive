@@ -84,7 +84,7 @@ ipcMain.on(CHANNELS.STORE_SET, (event, key, val) => {
 });
 
 // Teacher Mode handlers
-ipcMain.on(CHANNELS.START_TEACHER, (event, { name, className }) => {
+ipcMain.on(CHANNELS.START_TEACHER, (event, { name, className, password }) => {
     if (!mainWindow) return;
     if (studentService) {
         studentService.stop();
@@ -94,7 +94,7 @@ ipcMain.on(CHANNELS.START_TEACHER, (event, { name, className }) => {
         teacherService.stop();
     }
     teacherService = new TeacherNetworkService(mainWindow.webContents);
-    teacherService.start(className, name);
+    teacherService.start(className, name, password);
     console.log(`Teacher Service Started for ${name} - ${className}`);
 });
 
@@ -136,8 +136,8 @@ ipcMain.on(CHANNELS.START_STUDENT, (event) => {
     console.log('Student Service Started: Discovery Active');
 });
 
-ipcMain.on(CHANNELS.CONNECT_TO_CLASS, (event, { ip, port, studentInfo }) => {
-    studentService?.connectToClass(ip, port, studentInfo);
+ipcMain.on(CHANNELS.CONNECT_TO_CLASS, (event, { ip, port, studentInfo, password }) => {
+    studentService?.connectToClass(ip, port, studentInfo, password);
 });
 
 // Internal IPC for Locking (triggered by Network Service)
