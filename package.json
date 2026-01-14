@@ -1,6 +1,6 @@
 {
   "name": "attentive-cms",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Classroom Management System",
   "main": "dist/main/main.js",
   "scripts": {
