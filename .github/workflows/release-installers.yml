@@ -22,15 +22,10 @@ jobs:
 
       - run: npm ci
 
-      - name: Set VERSION from tag
-        shell: pwsh
-        run: |
-          $tag = "${{ github.ref_name }}"   # v1.0.2
-          $ver = $tag.TrimStart("v")
-          echo "APP_VERSION=$ver" >> $env:GITHUB_ENV
 
-      - run: npm run dist:student -- --publish never --config.extraMetadata.version=${{ env.APP_VERSION }}
-      - run: npm run dist:teacher -- --publish never --config.extraMetadata.version=${{ env.APP_VERSION }}
+
+      - run: npm run dist:student -- --publish never
+      - run: npm run dist:teacher -- --publish never
 
       - name: Upload installers to GitHub Release
         uses: softprops/action-gh-release@v2
