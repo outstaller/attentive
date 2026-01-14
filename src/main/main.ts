@@ -98,6 +98,16 @@ ipcMain.on(CHANNELS.START_TEACHER, (event, { name, className, password }) => {
     console.log(`Teacher Service Started for ${name} - ${className}`);
 });
 
+ipcMain.on(CHANNELS.STOP_TEACHER, () => {
+    if (teacherService) {
+        teacherService.kickAll(); // Disconnect everyone cleanly first
+        setTimeout(() => { // Give a moment for kick packets to send? Or just stop.
+            teacherService?.stop();
+            teacherService = null;
+        }, 100);
+    }
+});
+
 ipcMain.on(CHANNELS.LOCK_ALL, () => {
     teacherService?.lockAll();
 });
@@ -137,7 +147,12 @@ ipcMain.on(CHANNELS.START_STUDENT, (event) => {
 });
 
 ipcMain.on(CHANNELS.CONNECT_TO_CLASS, (event, { ip, port, studentInfo, password }) => {
-    studentService?.connectToClass(ip, port, studentInfo, password);
+    if (!studentService) {
+        console.error('Error: studentService is null!');
+        return;
+    }
+    studentService.updateWebContents(event.sender);
+    studentService.connectToClass(ip, port, studentInfo, password);
 });
 
 // Internal IPC for Locking (triggered by Network Service)

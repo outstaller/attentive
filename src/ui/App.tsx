@@ -15,8 +15,8 @@ const App = () => {
     const [mode, setMode] = useState<'selection' | 'teacher' | 'student'>('selection');
 
     // teacher state
-    const [teacherName, setTeacherName] = useState('המורה יוסי');
-    const [className, setClassName] = useState('מתמטיקה ח׳3');
+    const [teacherName, setTeacherName] = useState('');
+    const [className, setClassName] = useState('');
     const [isClassStarted, setIsClassStarted] = useState(false);
     const [students, setStudents] = useState<Student[]>([]);
 
@@ -30,8 +30,9 @@ const App = () => {
     const [passwordPromptClass, setPasswordPromptClass] = useState<BeaconPacket | null>(null);
     const [inputPassword, setInputPassword] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
+    const [showStopConfirm, setShowStopConfirm] = useState(false);
 
-    // Load Settings
+    // Load Settings & IPC Listeners
     useEffect(() => {
         const loadSettings = async () => {
             const tName = await ipcRenderer.invoke(CHANNELS.STORE_GET, 'teacherName');
@@ -64,30 +65,39 @@ const App = () => {
     };
 
     useEffect(() => {
-        // Teacher Listeners
-        ipcRenderer.on(CHANNELS.GET_STUDENTS, (e, list: Student[]) => {
+        // Define listeners
+        const handleGetStudents = (e: any, list: Student[]) => {
             setStudents(list);
-        });
+        };
 
-        // Student Listeners
-        ipcRenderer.on(CHANNELS.TEACHER_BEACON, (e, packet: BeaconPacket) => {
+        const handleTeacherBeacon = (e: any, packet: BeaconPacket) => {
             setDiscoveredClasses(prev => {
+                const now = Date.now();
                 const index = prev.findIndex(c => c.ip === packet.ip && c.port === packet.port);
+                const packetWithTime = { ...packet, lastSeen: now };
+
                 if (index !== -1) {
-                    // Update existing if changed
-                    if (JSON.stringify(prev[index]) !== JSON.stringify(packet)) {
+                    const { lastSeen: _, ...oldP } = prev[index] as any;
+                    const { lastSeen: __, ...newP } = packetWithTime as any;
+
+                    if (JSON.stringify(oldP) !== JSON.stringify(newP)) {
                         const newClasses = [...prev];
-                        newClasses[index] = packet;
+                        newClasses[index] = packetWithTime;
                         return newClasses;
                     }
-                    return prev;
+                    const newClasses = [...prev];
+                    newClasses[index] = packetWithTime;
+                    return newClasses;
                 }
-                return [...prev, packet];
+                return [...prev, packetWithTime];
             });
-        });
+        };
 
-        ipcRenderer.on(CHANNELS.STUDENT_STATUS_UPDATE, (e, status, msg) => {
+        const handleStatusUpdate = (e: any, status: any, msg: any) => {
             if (status === 'error') {
+                if (msg.includes('timeout') || msg.includes('xhr poll error')) {
+                    alert('החיבור לכיתה נכשל. ייתכן שהכיתה אינה זמינה כעת.');
+                }
                 setErrorMessage(msg === 'Invalid password' ? UI_STRINGS.student.incorrectPassword : msg);
             } else {
                 setConnectedStatus(status);
@@ -96,18 +106,44 @@ const App = () => {
                     setErrorMessage('');
                 }
             }
-        });
+        };
+
+        // Prune old classes
+        const pruneInterval = setInterval(() => {
+            setDiscoveredClasses(prev => prev.filter(c => Date.now() - ((c as any).lastSeen || 0) < 5000));
+        }, 1000);
+
+        // Register
+        ipcRenderer.on(CHANNELS.GET_STUDENTS, handleGetStudents);
+        ipcRenderer.on(CHANNELS.TEACHER_BEACON, handleTeacherBeacon);
+        ipcRenderer.on(CHANNELS.STUDENT_STATUS_UPDATE, handleStatusUpdate);
 
         return () => {
-            ipcRenderer.removeAllListeners(CHANNELS.GET_STUDENTS);
-            ipcRenderer.removeAllListeners(CHANNELS.TEACHER_BEACON);
-            ipcRenderer.removeAllListeners(CHANNELS.STUDENT_STATUS_UPDATE);
+            ipcRenderer.removeListener(CHANNELS.GET_STUDENTS, handleGetStudents);
+            ipcRenderer.removeListener(CHANNELS.TEACHER_BEACON, handleTeacherBeacon);
+            ipcRenderer.removeListener(CHANNELS.STUDENT_STATUS_UPDATE, handleStatusUpdate);
         };
     }, []);
 
     const startTeacher = () => {
+        if (!teacherName.trim() || !className.trim()) {
+            setErrorMessage('נא למלא את כל שדות החובה');
+            return;
+        }
+        setErrorMessage('');
         ipcRenderer.send(CHANNELS.START_TEACHER, { name: teacherName, className, password: teacherPassword });
         setIsClassStarted(true);
+    };
+
+    const stopTeacher = () => {
+        setShowStopConfirm(true);
+    };
+
+    const confirmStopTeacher = () => {
+        ipcRenderer.send(CHANNELS.STOP_TEACHER);
+        setIsClassStarted(false);
+        setStudents([]);
+        setShowStopConfirm(false);
     };
 
     const startStudentMode = () => {
@@ -222,13 +258,24 @@ const App = () => {
     if (mode === 'teacher') {
         return (
             <div style={styles.container}>
-                <div style={styles.header}>
-                    <img src="assets/logo.png" style={{ position: 'absolute', top: 10, left: 10, height: 50 }} alt="logo" />
+                <div style={{ ...styles.header, display: 'flex', justifyContent: 'space-between', alignItems: 'center', direction: 'rtl' }}>
                     <h2>{UI_STRINGS.teacher.dashboardTitle} - {teacherName.replace(/^המורה\s+/, '')}</h2>
+                    <div style={{ display: 'flex', alignItems: 'center', direction: 'ltr' }}>
+                        <img src="assets/logo.png" style={{ height: 50, marginRight: 10 }} alt="logo" />
+                        {isClassStarted && (
+                            <button
+                                style={{ ...styles.dangerButton, background: 'transparent', color: 'red', border: '1px solid red', fontSize: 16, padding: '5px 10px', marginRight: 20 }}
+                                onClick={stopTeacher}
+                                title="סיים שיעור"
+                            >
+                                ❌ סגור כיתה
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 {!isClassStarted ? (
-                    <div style={styles.card}>
+                    <form style={styles.card} onSubmit={(e) => { e.preventDefault(); startTeacher(); }}>
                         <h3>{UI_STRINGS.teacher.setupTitle}</h3>
                         <input
                             style={styles.input}
@@ -249,8 +296,9 @@ const App = () => {
                             type="password"
                             onChange={e => setTeacherPassword(e.target.value)}
                         />
-                        <button style={styles.primaryButton} onClick={startTeacher}>{UI_STRINGS.teacher.startClass}</button>
-                    </div>
+                        {errorMessage && <p style={{ color: 'red', marginTop: 5 }}>{errorMessage}</p>}
+                        <button type="submit" style={styles.primaryButton}>{UI_STRINGS.teacher.startClass}</button>
+                    </form>
                 ) : (
                     <div style={{ ...styles.card, width: '90%' }}>
                         <div style={styles.controls}>
@@ -286,6 +334,19 @@ const App = () => {
                         </div>
                     </div>
                 )}
+
+                {showStopConfirm && (
+                    <div style={styles.modalOverlay}>
+                        <div style={{ ...styles.card, width: 300, textAlign: 'center' }}>
+                            <h3>סיים שיעור?</h3>
+                            <p>האם אתה בטוח שברצונך לסיים את השיעור ולנתק את כולם?</p>
+                            <div style={{ display: 'flex', justifyContent: 'center', gap: 20, marginTop: 20 }}>
+                                <button style={styles.dangerButton} onClick={confirmStopTeacher}>כן, סגור כיתה</button>
+                                <button style={styles.primaryButton} onClick={() => setShowStopConfirm(false)}>לא, המשך שיעור</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div >
         );
     }
@@ -299,6 +360,9 @@ const App = () => {
                         <h1>✅</h1>
                         <h2>{UI_STRINGS.student.connectedTo} {connectedTeacher}</h2>
                         <p>{UI_STRINGS.student.waitingForTeacher}</p>
+                        <p style={{ marginTop: 20, fontSize: '0.8em', color: '#666', maxWidth: 400 }}>
+                            {UI_STRINGS.student.privacyDisclaimer}
+                        </p>
                     </div>
                 </div>
             )
@@ -408,6 +472,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     list: { display: 'flex', flexDirection: 'column', gap: 10 },
     listItem: { padding: 10, border: '1px solid #eee', borderRadius: 4, cursor: 'pointer', background: '#f9f9f9' },
     successMessage: { textAlign: 'center', marginTop: 50 },
+    modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
 };
 
 const IconButton = ({ onClick, icon, title, color = 'black' }: { onClick: () => void, icon: string, title: string, color?: string }) => {

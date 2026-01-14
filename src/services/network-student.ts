@@ -15,6 +15,10 @@ export class StudentNetworkService {
         this.mainWindow = webContents;
     }
 
+    public updateWebContents(webContents: WebContents) {
+        this.mainWindow = webContents;
+    }
+
     public startDiscovery() {
         this.udpSocket = dgram.createSocket('udp4');
 
@@ -50,24 +54,27 @@ export class StudentNetworkService {
 
         this.connectedClass = { ip, port };
         this.socket = io(`http://${ip}:${port}`, {
-            auth: { password }
+            auth: { password },
+            transports: ['websocket'],
+            reconnectionAttempts: 3,
+            forceNew: true
         });
 
         this.socket.on('connect_error', (err) => {
-            console.error('Connection error:', err.message);
+            console.error('Socket connect_error:', err.message);
             if (!this.mainWindow.isDestroyed()) {
                 this.mainWindow.send(CHANNELS.STUDENT_STATUS_UPDATE, 'error', err.message);
             }
         });
 
         this.socket.on('connect', () => {
-            console.log('Connected to teacher');
-            this.wasKicked = false;
-            this.socket?.emit(CHANNELS.SET_USER_INFO, info);
-            this.stopDiscovery(); // Stop listening once connected
+            console.log('Socket connected! ID:', this.socket?.id);
             if (!this.mainWindow.isDestroyed()) {
                 this.mainWindow.send(CHANNELS.STUDENT_STATUS_UPDATE, 'connected');
             }
+            this.wasKicked = false;
+            this.socket?.emit(CHANNELS.SET_USER_INFO, info);
+            this.stopDiscovery(); // Stop listening once connected
         });
 
         this.socket.on(CHANNELS.LOCK_STUDENT, () => {

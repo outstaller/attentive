@@ -5,6 +5,7 @@ export const MAX_LOCK_TIME_MS = 60 * 60 * 1000; // 60 minutes
 // IPC Channels
 export const CHANNELS = {
     START_TEACHER: 'start-teacher',
+    STOP_TEACHER: 'stop-teacher',
     START_STUDENT: 'start-student',
     LOCK_STUDENT: 'lock-student',
     UNLOCK_STUDENT: 'unlock-student',
@@ -29,11 +30,11 @@ export const UI_STRINGS = {
     teacher: {
         setupTitle: 'הגדרת כיתה',
         teacherName: 'שם המורה',
-        className: 'שם הכיתה',
+        className: 'שם השיעור או הכיתה',
         startClass: 'התחל שיעור',
         dashboardTitle: 'לוח בקרה למורה',
         classCode: 'קוד כיתה',
-        password: 'סיסמה (אופציונלי)',
+        password: 'סיסמא (אופציונלי)',
         lockAll: 'נעל את כולם',
         unlockAll: 'שחרר את כולם',
         students: 'תלמידים מחוברים',
@@ -61,5 +62,6 @@ export const UI_STRINGS = {
         screenLocked: 'עיניים אל המורה',
         disconnectedByTeacher: 'התנתקת מהשיעור על ידי המורה',
         backToMain: 'חזור למסך הראשי',
+        privacyDisclaimer: 'למורה או לתוכנה זאת אין שום גישה לאף קובץ, תוכנה או משאב של מחשב זה. שום מידע מהמחשב אינו משותף עם המורה בכל צורה.',
     }
 };
