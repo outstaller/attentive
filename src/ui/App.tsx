@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import { ipcRenderer } from 'electron';
+import { ipcRenderer, shell } from 'electron';
+import path from 'path';
+import fs from 'fs';
+import os from 'os';
 import { CHANNELS, UI_STRINGS } from '../shared/constants';
 import { BeaconPacket, Student } from '../shared/types';
 
@@ -112,6 +115,64 @@ const App = () => {
     const kickAll = () => ipcRenderer.send(CHANNELS.KICK_ALL);
     const kickStudent = (id: string) => ipcRenderer.send(CHANNELS.KICK_STUDENT, id);
 
+    const generateAttendanceList = () => {
+        const sortedStudents = [...students].sort((a, b) => a.name.localeCompare(b.name));
+        const date = new Date().toLocaleString('he-IL');
+
+        const htmlContent = `
+            <!DOCTYPE html>
+            <html lang="he" dir="rtl">
+            <head>
+                <meta charset="UTF-8">
+                <title>רשימת נוכחות</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 20px; }
+                    h1 { text-align: center; }
+                    .meta { margin-bottom: 20px; font-size: 1.2em; text-align: center; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                    th, td { border: 1px solid #ddd; padding: 12px; text-align: right; }
+                    th { background-color: #f2f2f2; }
+                    tr:nth-child(even) { background-color: #f9f9f9; }
+                </style>
+            </head>
+            <body>
+                <h1>רשימת נוכחות - ${className}</h1>
+                <div class="meta">
+                    מורה: ${teacherName}<br>
+                    תאריך: ${date}<br>
+                    סה"כ תלמידים: ${sortedStudents.length}
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>שם התלמיד</th>
+                            <th>כיתה</th>
+                            <th>סטטוס</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${sortedStudents.map((s, index) => `
+                        <tr>
+                            <td>${index + 1}</td>
+                            <td>${s.name}</td>
+                            <td>${s.grade}</td>
+                            <td>${s.status === 'locked' ? 'נעול' : 'פעיל'}</td>
+                        </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </body>
+            </html>
+        `;
+
+        const filename = `attendance_${Date.now()}.html`;
+        const filePath = path.join(os.tmpdir(), filename);
+
+        fs.writeFileSync(filePath, htmlContent);
+        shell.openPath(filePath);
+    };
+
     // --- Render Selection ---
     if (mode === 'selection') {
         return (
@@ -161,6 +222,7 @@ const App = () => {
                                 <button style={styles.dangerButton} onClick={lockAll}>{UI_STRINGS.teacher.lockAll}</button>
                                 <button style={styles.successButton} onClick={unlockAll}>{UI_STRINGS.teacher.unlockAll}</button>
                                 <button style={{ ...styles.dangerButton, background: '#8b0000', marginLeft: 0 }} onClick={kickAll}>{UI_STRINGS.teacher.disconnectAll}</button>
+                                <button style={styles.primaryButton} onClick={generateAttendanceList}>רשימת נוכחות 📋</button>
                             </div>
                         </div>
                         <div style={{ padding: '0 20px', marginBottom: 10, fontWeight: 'bold' }}>
