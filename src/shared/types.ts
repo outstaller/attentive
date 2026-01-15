@@ -26,4 +26,5 @@ export interface BeaconPacket {
     ip: string;
     port: number;
     isSecured: boolean;
+    sessionId?: string; // Unique ID for deduplication
 }

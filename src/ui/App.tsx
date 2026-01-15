@@ -73,18 +73,27 @@ const App = () => {
         const handleTeacherBeacon = (e: any, packet: BeaconPacket) => {
             setDiscoveredClasses(prev => {
                 const now = Date.now();
-                const index = prev.findIndex(c => c.ip === packet.ip && c.port === packet.port);
+                // Dedup by sessionId if available, otherwise by ip+port
+                const index = prev.findIndex(c => {
+                    if (packet.sessionId && c.sessionId) {
+                        return c.sessionId === packet.sessionId;
+                    }
+                    return c.ip === packet.ip && c.port === packet.port;
+                });
+
                 const packetWithTime = { ...packet, lastSeen: now };
 
                 if (index !== -1) {
                     const { lastSeen: _, ...oldP } = prev[index] as any;
                     const { lastSeen: __, ...newP } = packetWithTime as any;
 
+                    // If content changed (e.g. IP changed or name changed), update
                     if (JSON.stringify(oldP) !== JSON.stringify(newP)) {
                         const newClasses = [...prev];
                         newClasses[index] = packetWithTime;
                         return newClasses;
                     }
+                    // Just update timestamp
                     const newClasses = [...prev];
                     newClasses[index] = packetWithTime;
                     return newClasses;

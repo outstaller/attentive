@@ -1,4 +1,5 @@
 import dgram from 'dgram';
+import crypto from 'crypto';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import http from 'http';
 import { ipcMain, WebContents } from 'electron';
@@ -17,6 +18,7 @@ export class TeacherNetworkService {
     private mainWindow: WebContents;
 
     private password: string = '';
+    private currentSessionId: string = '';
 
     constructor(webContents: WebContents) {
         this.mainWindow = webContents;
@@ -24,6 +26,7 @@ export class TeacherNetworkService {
 
     public async start(className: string, teacherName: string, password?: string) {
         this.password = password || '';
+        this.currentSessionId = crypto.randomUUID();
         this.startUDPServer(className, teacherName);
         this.startSocketServer();
     }
@@ -53,6 +56,7 @@ export class TeacherNetworkService {
             ip: localIp,
             port: TCP_PORT,
             isSecured: !!this.password,
+            sessionId: this.currentSessionId,
         };
 
         this.beaconTimer = setInterval(() => {
