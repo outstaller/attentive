@@ -26,6 +26,10 @@ export class StudentNetworkService {
             try {
                 const packet = JSON.parse(msg.toString()) as BeaconPacket;
                 if (packet.type === PacketType.BEACON) {
+                    // Always prefer the actual Sender IP (rinfo.address) over the claimed IP in the packet
+                    // This solves issues where multi-homed teachers broadcast unreachable IPs via reachable interfaces
+                    packet.ip = rinfo.address;
+
                     // Send found class to UI
                     if (!this.mainWindow.isDestroyed()) {
                         this.mainWindow.send(CHANNELS.TEACHER_BEACON, packet);
