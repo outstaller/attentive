@@ -28,3 +28,10 @@ export interface BeaconPacket {
     isSecured: boolean;
     sessionId?: string; // Unique ID for deduplication
 }
+
+export interface LogEntry {
+    timestamp: number;
+    message: string;
+    type?: 'info' | 'warning' | 'error';
+}
+

@@ -17,6 +17,16 @@ export class TeacherNetworkService {
     private isClassLocked: boolean = false;
     private mainWindow: WebContents;
 
+    private log(message: string, type: 'info' | 'warning' | 'error' = 'info') {
+        if (!this.mainWindow.isDestroyed()) {
+            this.mainWindow.send(CHANNELS.LOG_ENTRY, {
+                timestamp: Date.now(),
+                message,
+                type
+            });
+        }
+    }
+
     private password: string = '';
     private currentSessionId: string = '';
 
@@ -119,6 +129,10 @@ export class TeacherNetworkService {
                 this.students.set(socket.id, student);
                 this.broadcastStudentList();
 
+                this.broadcastStudentList();
+
+                this.log(`תלמיד התחבר: ${info.name} (כיתה ${info.grade})`, 'info');
+
                 // Sync lock state
                 if (this.isClassLocked) {
                     socket.emit(CHANNELS.LOCK_STUDENT);
@@ -126,6 +140,12 @@ export class TeacherNetworkService {
             });
 
             socket.on('disconnect', () => {
+                const s = this.students.get(socket.id);
+                if (s) {
+                    this.log(`תלמיד התנתק: ${s.name}`, 'warning');
+                } else {
+                    this.log(`חיבור התנתק (לא מזוהה): ${socket.id}`, 'warning');
+                }
                 this.students.delete(socket.id);
                 this.broadcastStudentList();
             });
@@ -140,22 +160,30 @@ export class TeacherNetworkService {
         this.isClassLocked = true;
         this.io?.emit(CHANNELS.LOCK_STUDENT);
         this.updateAllStatuses('locked');
+        this.log('הכיתה ננעלה', 'warning');
     }
 
     public unlockAll() {
         this.isClassLocked = false;
         this.io?.emit(CHANNELS.UNLOCK_STUDENT);
         this.updateAllStatuses('active');
+        this.log('הכיתה שוחררה', 'info');
     }
 
     public lockStudent(socketId: string) {
         this.io?.to(socketId).emit(CHANNELS.LOCK_STUDENT);
         this.updateStudentStatus(socketId, 'locked');
+
+        const s = this.students.get(socketId);
+        this.log(`תלמיד ננעל: ${s ? s.name : socketId}`, 'warning');
     }
 
     public unlockStudent(socketId: string) {
         this.io?.to(socketId).emit(CHANNELS.UNLOCK_STUDENT);
         this.updateStudentStatus(socketId, 'active');
+
+        const s = this.students.get(socketId);
+        this.log(`תלמיד שוחרר: ${s ? s.name : socketId}`, 'info');
     }
 
     public kickStudent(socketId: string) {
@@ -173,6 +201,7 @@ export class TeacherNetworkService {
             socket.disconnect(true);
         });
         // The disconnect handlers will clean up
+        this.log('כל התלמידים המחוברים נותקו', 'warning');
     }
 
     private updateAllStatuses(status: 'active' | 'locked') {

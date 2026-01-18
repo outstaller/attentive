@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { CHANNELS, UI_STRINGS } from '../shared/constants';
-import { BeaconPacket, Student } from '../shared/types';
+import { BeaconPacket, Student, LogEntry } from '../shared/types';
 
 // --- Type Extensions ---
 // Since we are not using a full build pipeline with proper global extension via d.ts for this snippet
@@ -19,6 +19,7 @@ const App = () => {
     const [className, setClassName] = useState('');
     const [isClassStarted, setIsClassStarted] = useState(false);
     const [students, setStudents] = useState<Student[]>([]);
+    const [logs, setLogs] = useState<LogEntry[]>([]);
 
     // student state
     const [studentName, setStudentName] = useState('');
@@ -115,6 +116,11 @@ const App = () => {
                     setErrorMessage('');
                 }
             }
+        }
+
+
+        const handleLogEntry = (e: any, log: LogEntry) => {
+            setLogs(prev => [log, ...prev]);
         };
 
         // Prune old classes
@@ -126,11 +132,13 @@ const App = () => {
         ipcRenderer.on(CHANNELS.GET_STUDENTS, handleGetStudents);
         ipcRenderer.on(CHANNELS.TEACHER_BEACON, handleTeacherBeacon);
         ipcRenderer.on(CHANNELS.STUDENT_STATUS_UPDATE, handleStatusUpdate);
+        ipcRenderer.on(CHANNELS.LOG_ENTRY, handleLogEntry);
 
         return () => {
             ipcRenderer.removeListener(CHANNELS.GET_STUDENTS, handleGetStudents);
             ipcRenderer.removeListener(CHANNELS.TEACHER_BEACON, handleTeacherBeacon);
             ipcRenderer.removeListener(CHANNELS.STUDENT_STATUS_UPDATE, handleStatusUpdate);
+            ipcRenderer.removeListener(CHANNELS.LOG_ENTRY, handleLogEntry);
         };
     }, []);
 
@@ -152,6 +160,7 @@ const App = () => {
         ipcRenderer.send(CHANNELS.STOP_TEACHER);
         setIsClassStarted(false);
         setStudents([]);
+        setLogs([]);
         setShowStopConfirm(false);
     };
 
@@ -309,39 +318,57 @@ const App = () => {
                         <button type="submit" style={styles.primaryButton}>{UI_STRINGS.teacher.startClass}</button>
                     </form>
                 ) : (
-                    <div style={{ ...styles.card, width: '90%' }}>
-                        <div style={styles.controls}>
-                            <div>
-                                <strong>שיעור: {className} </strong> | IP: {require('ip').address()}
-                            </div>
-                            <div style={{ display: 'flex', gap: 10 }}>
-                                <button style={styles.dangerButton} onClick={lockAll}>{UI_STRINGS.teacher.lockAll}</button>
-                                <button style={styles.successButton} onClick={unlockAll}>{UI_STRINGS.teacher.unlockAll}</button>
-                                <button style={{ ...styles.dangerButton, background: '#8b0000', marginLeft: 0 }} onClick={kickAll}>{UI_STRINGS.teacher.disconnectAll}</button>
-                                <button style={styles.primaryButton} onClick={generateAttendanceList}>רשימת נוכחות 📋</button>
-                            </div>
-                        </div>
-                        <div style={{ padding: '0 20px', marginBottom: 10, fontWeight: 'bold' }}>
-                            {UI_STRINGS.teacher.students}: {students.length}
-                        </div>
-                        <div style={styles.grid}>
-                            {students.map(s => (
-                                <div key={s.id} style={{ ...styles.studentCard, border: s.status === 'locked' ? '2px solid red' : '1px solid #ddd' }}>
-                                    <div style={styles.studentName}>{s.name}</div>
-                                    <div style={styles.studentGrade}>{s.grade}</div>
-                                    <div style={styles.status}>{s.status === 'locked' ? UI_STRINGS.teacher.statusLocked : UI_STRINGS.teacher.statusActive}</div>
-                                    <div style={styles.actions}>
-                                        {s.status === 'locked' ? (
-                                            <IconButton onClick={() => unlockStudent(s.id)} icon="🔓" title={UI_STRINGS.teacher.unlockStudent} />
-                                        ) : (
-                                            <IconButton onClick={() => lockStudent(s.id)} icon="🔒" title={UI_STRINGS.teacher.lockStudent} />
-                                        )}
-                                        <IconButton onClick={() => kickStudent(s.id)} icon="❌" title={UI_STRINGS.teacher.kickStudent} />
-                                    </div>
+                    <>
+                        <div style={{ ...styles.card, width: '90%' }}>
+                            <div style={styles.controls}>
+                                <div>
+                                    <strong>שיעור: {className} </strong> | IP: {require('ip').address()}
                                 </div>
-                            ))}
+                                <div style={{ display: 'flex', gap: 10 }}>
+                                    <button style={styles.dangerButton} onClick={lockAll}>{UI_STRINGS.teacher.lockAll}</button>
+                                    <button style={styles.successButton} onClick={unlockAll}>{UI_STRINGS.teacher.unlockAll}</button>
+                                    <button style={{ ...styles.dangerButton, background: '#8b0000', marginLeft: 0 }} onClick={kickAll}>{UI_STRINGS.teacher.disconnectAll}</button>
+                                    <button style={styles.primaryButton} onClick={generateAttendanceList}>רשימת נוכחות 📋</button>
+                                </div>
+                            </div>
+                            <div style={{ padding: '0 20px', marginBottom: 10, fontWeight: 'bold' }}>
+                                {UI_STRINGS.teacher.students}: {students.length}
+                            </div>
+                            <div style={styles.grid}>
+                                {students.map(s => (
+                                    <div key={s.id} style={{ ...styles.studentCard, border: s.status === 'locked' ? '2px solid red' : '1px solid #ddd' }}>
+                                        <div style={styles.studentName}>{s.name}</div>
+                                        <div style={styles.studentGrade}>{s.grade}</div>
+                                        <div style={styles.status}>{s.status === 'locked' ? UI_STRINGS.teacher.statusLocked : UI_STRINGS.teacher.statusActive}</div>
+                                        <div style={styles.actions}>
+                                            {s.status === 'locked' ? (
+                                                <IconButton onClick={() => unlockStudent(s.id)} icon="🔓" title={UI_STRINGS.teacher.unlockStudent} />
+                                            ) : (
+                                                <IconButton onClick={() => lockStudent(s.id)} icon="🔒" title={UI_STRINGS.teacher.lockStudent} />
+                                            )}
+                                            <IconButton onClick={() => kickStudent(s.id)} icon="❌" title={UI_STRINGS.teacher.kickStudent} />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                    </div>
+
+                        <div style={{ ...styles.card, ...styles.logContainer, marginTop: 20 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                                <h4 style={{ margin: 0 }}>יומן פעילות</h4>
+                                <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16 }} onClick={() => setLogs([])} title="נקה יומן">🗑️</button>
+                            </div>
+                            <div style={styles.logList}>
+                                {logs.length === 0 && <div style={{ color: '#aaa', fontStyle: 'italic', padding: 10 }}>אין פעילות להצגה</div>}
+                                {logs.map((log, i) => (
+                                    <div key={i} style={{ ...styles.logItem, borderRight: log.type === 'error' ? '3px solid red' : log.type === 'warning' ? '3px solid orange' : '3px solid #007bff' }}>
+                                        <span style={styles.logTime}>{new Date(log.timestamp).toLocaleTimeString('he-IL')}</span>
+                                        <span style={styles.logMessage}>{log.message}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </>
                 )}
 
                 {showStopConfirm && (
@@ -462,7 +489,7 @@ const App = () => {
 
 // --- Styles ---
 const styles: { [key: string]: React.CSSProperties } = {
-    container: { padding: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', gap: 20 },
+    container: { padding: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', gap: 20, overflowY: 'auto' },
     row: { display: 'flex', gap: 20 },
     header: { width: '100%', borderBottom: '1px solid #ccc', paddingBottom: 10, marginBottom: 20 },
     card: { background: 'white', padding: 20, borderRadius: 8, boxShadow: '0 2px 5px rgba(0,0,0,0.1)', width: 400, display: 'flex', flexDirection: 'column', gap: 10 },
@@ -482,6 +509,11 @@ const styles: { [key: string]: React.CSSProperties } = {
     listItem: { padding: 10, border: '1px solid #eee', borderRadius: 4, cursor: 'pointer', background: '#f9f9f9' },
     successMessage: { textAlign: 'center', marginTop: 50 },
     modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
+    logContainer: { width: '90%', height: 250, display: 'flex', flexDirection: 'column' },
+    logList: { flex: 1, overflowY: 'auto', background: '#f9f9f9', border: '1px solid #eee', borderRadius: 4, padding: 5 },
+    logItem: { padding: '5px 10px', fontSize: 13, borderBottom: '1px solid #eee', display: 'flex', gap: 10 },
+    logTime: { color: '#888', minWidth: 60 },
+    logMessage: { flex: 1 },
 };
 
 const IconButton = ({ onClick, icon, title, color = 'black' }: { onClick: () => void, icon: string, title: string, color?: string }) => {

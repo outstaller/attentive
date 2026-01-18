@@ -24,6 +24,7 @@ export const CHANNELS = {
     APP_MODE: 'app-mode', // 'teacher' | 'student'
     STORE_GET: 'store-get',
     STORE_SET: 'store-set',
+    LOG_ENTRY: 'log-entry',
 };
 
 export const UI_STRINGS = {
