@@ -1,10 +1,13 @@
 export interface Student {
-    id: string; // Socket ID
+    id: string; // Unique ID (Name + Grade)
+    socketId?: string; // Current Socket ID
     name: string;
     grade: string;
     ip: string;
-    status: 'active' | 'locked' | 'idle';
+    status: 'active' | 'locked' | 'idle' | 'disconnected';
     lastSeen: number;
+    connectedAt?: number; // Start of current session
+    totalDuration: number; // Accumulated minutes/ms from previous sessions
 }
 
 export interface ClassSession {

@@ -234,18 +234,28 @@ const App = () => {
                             <th>#</th>
                             <th>שם התלמיד</th>
                             <th>כיתה</th>
+                            <th>זמן חיבור</th>
                             <th>סטטוס</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${sortedStudents.map((s, index) => `
+                        ${sortedStudents.map((s, index) => {
+            let durationMs = s.totalDuration || 0;
+            if (s.connectedAt) {
+                durationMs += (Date.now() - s.connectedAt);
+            }
+            const minutes = Math.floor(durationMs / 60000);
+            const seconds = Math.floor((durationMs % 60000) / 1000);
+            return `
                         <tr>
                             <td>${index + 1}</td>
                             <td>${s.name}</td>
                             <td>${s.grade}</td>
-                            <td>${s.status === 'locked' ? 'נעול' : 'פעיל'}</td>
+                            <td>${minutes} דק' ${seconds} שנ'</td>
+                            <td>${s.status === 'locked' ? 'נעול' : s.status === 'disconnected' ? 'מנותק' : 'פעיל'}</td>
                         </tr>
-                        `).join('')}
+                        `;
+        }).join('')}
                     </tbody>
                 </table>
             </body>
@@ -336,17 +346,31 @@ const App = () => {
                             </div>
                             <div style={styles.grid}>
                                 {students.map(s => (
-                                    <div key={s.id} style={{ ...styles.studentCard, border: s.status === 'locked' ? '2px solid red' : '1px solid #ddd' }}>
-                                        <div style={styles.studentName}>{s.name}</div>
+                                    <div key={s.id} style={{
+                                        ...styles.studentCard,
+                                        border: s.status === 'locked' ? '2px solid red' : s.status === 'disconnected' ? '1px solid #ccc' : '1px solid #ddd',
+                                        opacity: s.status === 'disconnected' ? 0.6 : 1,
+                                        backgroundColor: s.status === 'disconnected' ? '#f5f5f5' : 'white'
+                                    }}>
+                                        <div style={{ ...styles.studentName, color: s.status === 'disconnected' ? '#888' : 'black' }}>{s.name}</div>
                                         <div style={styles.studentGrade}>{s.grade}</div>
-                                        <div style={styles.status}>{s.status === 'locked' ? UI_STRINGS.teacher.statusLocked : UI_STRINGS.teacher.statusActive}</div>
+                                        <div style={{ ...styles.status, color: s.status === 'disconnected' ? '#888' : 'black' }}>
+                                            {s.status === 'locked' ? UI_STRINGS.teacher.statusLocked :
+                                                s.status === 'disconnected' ? 'מנותק' : UI_STRINGS.teacher.statusActive}
+                                        </div>
                                         <div style={styles.actions}>
-                                            {s.status === 'locked' ? (
-                                                <IconButton onClick={() => unlockStudent(s.id)} icon="🔓" title={UI_STRINGS.teacher.unlockStudent} />
+                                            {s.status === 'active' || s.status === 'locked' ? (
+                                                <>
+                                                    {s.status === 'locked' ? (
+                                                        <IconButton onClick={() => unlockStudent(s.id)} icon="🔓" title={UI_STRINGS.teacher.unlockStudent} />
+                                                    ) : (
+                                                        <IconButton onClick={() => lockStudent(s.id)} icon="🔒" title={UI_STRINGS.teacher.lockStudent} />
+                                                    )}
+                                                    <IconButton onClick={() => kickStudent(s.id)} icon="❌" title={UI_STRINGS.teacher.kickStudent} />
+                                                </>
                                             ) : (
-                                                <IconButton onClick={() => lockStudent(s.id)} icon="🔒" title={UI_STRINGS.teacher.lockStudent} />
+                                                <div style={{ height: 28 }}></div>
                                             )}
-                                            <IconButton onClick={() => kickStudent(s.id)} icon="❌" title={UI_STRINGS.teacher.kickStudent} />
                                         </div>
                                     </div>
                                 ))}

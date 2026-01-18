@@ -13,7 +13,8 @@ export class TeacherNetworkService {
     private io: SocketIOServer | null = null;
     private httpServer: http.Server | null = null;
     private beaconTimer: NodeJS.Timeout | null = null;
-    private students: Map<string, Student> = new Map(); // socketId -> Student
+    private students: Map<string, Student> = new Map(); // UniqueID -> Student
+    private socketToStudentId: Map<string, string> = new Map(); // SocketID -> UniqueID
     private isClassLocked: boolean = false;
     private mainWindow: WebContents;
 
@@ -47,6 +48,7 @@ export class TeacherNetworkService {
         if (this.io) this.io.close();
         if (this.httpServer) this.httpServer.close();
         this.students.clear();
+        this.socketToStudentId.clear();
     }
 
     private startUDPServer(className: string, teacherName: string) {
@@ -118,16 +120,33 @@ export class TeacherNetworkService {
             console.log('Student connected:', socket.id);
 
             socket.on(CHANNELS.SET_USER_INFO, (info: { name: string; grade: string }) => {
-                const student: Student = {
-                    id: socket.id,
-                    name: info.name,
-                    grade: info.grade,
-                    ip: socket.handshake.address,
-                    status: this.isClassLocked ? 'locked' : 'active',
-                    lastSeen: Date.now(),
-                };
-                this.students.set(socket.id, student);
-                this.broadcastStudentList();
+                const uniqueId = `${info.name}_${info.grade}`;
+                let student = this.students.get(uniqueId);
+
+                if (student) {
+                    // Reconnection
+                    student.socketId = socket.id;
+                    student.status = this.isClassLocked ? 'locked' : 'active';
+                    student.lastSeen = Date.now();
+                    student.connectedAt = Date.now();
+                    student.ip = socket.handshake.address;
+                } else {
+                    // New connection
+                    student = {
+                        id: uniqueId,
+                        socketId: socket.id,
+                        name: info.name,
+                        grade: info.grade,
+                        ip: socket.handshake.address,
+                        status: this.isClassLocked ? 'locked' : 'active',
+                        lastSeen: Date.now(),
+                        connectedAt: Date.now(),
+                        totalDuration: 0
+                    };
+                }
+
+                this.students.set(uniqueId, student);
+                this.socketToStudentId.set(socket.id, uniqueId);
 
                 this.broadcastStudentList();
 
@@ -140,13 +159,23 @@ export class TeacherNetworkService {
             });
 
             socket.on('disconnect', () => {
-                const s = this.students.get(socket.id);
-                if (s) {
-                    this.log(`תלמיד התנתק: ${s.name}`, 'warning');
+                const uniqueId = this.socketToStudentId.get(socket.id);
+                if (uniqueId) {
+                    const student = this.students.get(uniqueId);
+                    if (student) {
+                        student.status = 'disconnected';
+                        if (student.connectedAt) {
+                            student.totalDuration = (student.totalDuration || 0) + (Date.now() - student.connectedAt);
+                            student.connectedAt = undefined;
+                        }
+                        student.socketId = undefined; // Clear socket ID
+                        this.log(`תלמיד התנתק: ${student.name}`, 'warning');
+                    }
+                    this.socketToStudentId.delete(socket.id);
                 } else {
                     this.log(`חיבור התנתק (לא מזוהה): ${socket.id}`, 'warning');
                 }
-                this.students.delete(socket.id);
+
                 this.broadcastStudentList();
             });
         });
@@ -170,29 +199,33 @@ export class TeacherNetworkService {
         this.log('הכיתה שוחררה', 'info');
     }
 
-    public lockStudent(socketId: string) {
-        this.io?.to(socketId).emit(CHANNELS.LOCK_STUDENT);
-        this.updateStudentStatus(socketId, 'locked');
-
-        const s = this.students.get(socketId);
-        this.log(`תלמיד ננעל: ${s ? s.name : socketId}`, 'warning');
-    }
-
-    public unlockStudent(socketId: string) {
-        this.io?.to(socketId).emit(CHANNELS.UNLOCK_STUDENT);
-        this.updateStudentStatus(socketId, 'active');
-
-        const s = this.students.get(socketId);
-        this.log(`תלמיד שוחרר: ${s ? s.name : socketId}`, 'info');
-    }
-
-    public kickStudent(socketId: string) {
-        this.io?.to(socketId).emit(CHANNELS.KICK_STUDENT);
-        const socket = this.io?.sockets.sockets.get(socketId);
-        if (socket) {
-            socket.disconnect(true);
+    public lockStudent(uniqueId: string) {
+        const student = this.students.get(uniqueId);
+        if (student && student.socketId) {
+            this.io?.to(student.socketId).emit(CHANNELS.LOCK_STUDENT);
+            this.updateStudentStatus(uniqueId, 'locked');
+            this.log(`תלמיד ננעל: ${student.name}`, 'warning');
         }
-        // The disconnect handler will clean up the map and broadcast
+    }
+
+    public unlockStudent(uniqueId: string) {
+        const student = this.students.get(uniqueId);
+        if (student && student.socketId) {
+            this.io?.to(student.socketId).emit(CHANNELS.UNLOCK_STUDENT);
+            this.updateStudentStatus(uniqueId, 'active');
+            this.log(`תלמיד שוחרר: ${student.name}`, 'info');
+        }
+    }
+
+    public kickStudent(uniqueId: string) {
+        const student = this.students.get(uniqueId);
+        if (student && student.socketId) {
+            this.io?.to(student.socketId).emit(CHANNELS.KICK_STUDENT);
+            const socket = this.io?.sockets.sockets.get(student.socketId);
+            if (socket) {
+                socket.disconnect(true);
+            }
+        }
     }
 
     public kickAll() {
@@ -205,12 +238,16 @@ export class TeacherNetworkService {
     }
 
     private updateAllStatuses(status: 'active' | 'locked') {
-        this.students.forEach(s => s.status = status);
+        this.students.forEach(s => {
+            if (s.status !== 'disconnected') {
+                s.status = status;
+            }
+        });
         this.broadcastStudentList();
     }
 
-    private updateStudentStatus(id: string, status: 'active' | 'locked') {
-        const s = this.students.get(id);
+    private updateStudentStatus(uniqueId: string, status: 'active' | 'locked') {
+        const s = this.students.get(uniqueId);
         if (s) {
             s.status = status;
             this.broadcastStudentList();
