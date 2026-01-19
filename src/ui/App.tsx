@@ -304,15 +304,6 @@ const App = () => {
                     <h2>{UI_STRINGS.teacher.dashboardTitle} - {teacherName.replace(/^המורה\s+/, '')}</h2>
                     <div style={{ display: 'flex', alignItems: 'center', direction: 'ltr' }}>
                         <img src="assets/logo.png" style={{ height: 50, marginRight: 10 }} alt="logo" />
-                        {isClassStarted && (
-                            <button
-                                style={{ ...styles.dangerButton, background: 'transparent', color: 'red', border: '1px solid red', fontSize: 16, padding: '5px 10px', marginRight: 20 }}
-                                onClick={stopTeacher}
-                                title="סיים שיעור"
-                            >
-                                ❌ סגור כיתה
-                            </button>
-                        )}
                     </div>
                 </div>
 
@@ -353,55 +344,66 @@ const App = () => {
                     </form>
                 ) : (
                     <>
-                        <div style={{ ...styles.card, width: '90%' }}>
-                            <div style={styles.controls}>
-                                <div>
-                                    <strong>שיעור: {className} </strong> | IP: {require('ip').address()}
-                                </div>
-                                <div style={{ display: 'flex', gap: 10 }}>
-                                    <button style={styles.dangerButton} onClick={lockAll}>{UI_STRINGS.teacher.lockAll}</button>
-                                    <button style={styles.successButton} onClick={unlockAll}>{UI_STRINGS.teacher.unlockAll}</button>
-                                    <button style={{ ...styles.dangerButton, background: '#8b0000', marginLeft: 0 }} onClick={kickAll}>{UI_STRINGS.teacher.disconnectAll}</button>
-                                    <button style={styles.primaryButton} onClick={generateAttendanceList}>רשימת נוכחות 📋</button>
-                                </div>
-                            </div>
-                            <div style={{ padding: '0 20px', marginBottom: 10, fontWeight: 'bold' }}>
-                                {UI_STRINGS.teacher.students}: {students.length}
-                            </div>
-                            <div style={styles.grid}>
-                                {students.map(s => (
-                                    <div key={s.id} style={{
-                                        ...styles.studentCard,
-                                        border: s.status === 'locked' ? '2px solid red' : s.status === 'disconnected' ? '1px solid #ccc' : '1px solid #ddd',
-                                        opacity: s.status === 'disconnected' ? 0.6 : 1,
-                                        backgroundColor: s.status === 'disconnected' ? '#f5f5f5' : 'white'
-                                    }}>
-                                        <div style={{ ...styles.studentName, color: s.status === 'disconnected' ? '#888' : 'black' }}>{s.name}</div>
-                                        <div style={styles.studentGrade}>{s.grade}</div>
-                                        <div style={{ ...styles.status, color: s.status === 'disconnected' ? '#888' : 'black' }}>
-                                            {s.status === 'locked' ? UI_STRINGS.teacher.statusLocked :
-                                                s.status === 'disconnected' ? 'מנותק' : UI_STRINGS.teacher.statusActive}
-                                        </div>
-                                        <div style={styles.actions}>
-                                            {s.status === 'active' || s.status === 'locked' ? (
-                                                <>
-                                                    {s.status === 'locked' ? (
-                                                        <IconButton onClick={() => unlockStudent(s.id)} icon="🔓" title={UI_STRINGS.teacher.unlockStudent} />
-                                                    ) : (
-                                                        <IconButton onClick={() => lockStudent(s.id)} icon="🔒" title={UI_STRINGS.teacher.lockStudent} />
-                                                    )}
-                                                    <IconButton onClick={() => kickStudent(s.id)} icon="❌" title={UI_STRINGS.teacher.kickStudent} />
-                                                </>
-                                            ) : (
-                                                <div style={{ height: 28 }}></div>
-                                            )}
-                                        </div>
+                        <div style={styles.dashboardContent}>
+                            <div style={{ ...styles.card, width: '90%', height: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
+                                <div style={{ ...styles.controls, flexShrink: 0 }}>
+                                    <div>
+                                        <strong>שיעור: {className} </strong> | IP: {require('ip').address()}
                                     </div>
-                                ))}
+                                    <div style={{ display: 'flex', gap: 10 }}>
+                                        <button style={styles.dangerButton} onClick={lockAll}>{UI_STRINGS.teacher.lockAll}</button>
+                                        <button style={styles.successButton} onClick={unlockAll}>{UI_STRINGS.teacher.unlockAll}</button>
+                                        <button style={{ ...styles.dangerButton, background: '#8b0000', marginLeft: 0 }} onClick={kickAll}>{UI_STRINGS.teacher.disconnectAll}</button>
+                                        <button style={styles.primaryButton} onClick={generateAttendanceList}>רשימת נוכחות 📋</button>
+                                        <button
+                                            style={{ ...styles.dangerButton, background: 'transparent', color: 'red', border: '1px solid red' }}
+                                            onClick={stopTeacher}
+                                            title="סיים שיעור"
+                                        >
+                                            ❌ סגור כיתה
+                                        </button>
+                                    </div>
+                                </div>
+                                <div style={{ padding: '0 20px', marginBottom: 10, fontWeight: 'bold', flexShrink: 0 }}>
+                                    {UI_STRINGS.teacher.students}: {students.length}
+                                </div>
+                                <div style={styles.scrollableGrid}>
+                                    <div style={styles.grid}>
+                                        {students.map(s => (
+                                            <div key={s.id} style={{
+                                                ...styles.studentCard,
+                                                border: s.status === 'locked' ? '2px solid red' : s.status === 'disconnected' ? '1px solid #ccc' : '1px solid #ddd',
+                                                opacity: s.status === 'disconnected' ? 0.6 : 1,
+                                                backgroundColor: s.status === 'disconnected' ? '#f5f5f5' : 'white'
+                                            }}>
+                                                <div style={{ ...styles.studentName, color: s.status === 'disconnected' ? '#888' : 'black' }}>{s.name}</div>
+                                                <div style={styles.studentGrade}>{s.grade}</div>
+                                                <div style={{ ...styles.status, color: s.status === 'disconnected' ? '#888' : 'black' }}>
+                                                    {s.status === 'locked' ? UI_STRINGS.teacher.statusLocked :
+                                                        s.status === 'disconnected' ? 'מנותק' : UI_STRINGS.teacher.statusActive}
+                                                </div>
+                                                <div style={styles.actions}>
+                                                    {s.status === 'active' || s.status === 'locked' ? (
+                                                        <>
+                                                            {s.status === 'locked' ? (
+                                                                <IconButton onClick={() => unlockStudent(s.id)} icon="🔓" title={UI_STRINGS.teacher.unlockStudent} />
+                                                            ) : (
+                                                                <IconButton onClick={() => lockStudent(s.id)} icon="🔒" title={UI_STRINGS.teacher.lockStudent} />
+                                                            )}
+                                                            <IconButton onClick={() => kickStudent(s.id)} icon="❌" title={UI_STRINGS.teacher.kickStudent} />
+                                                        </>
+                                                    ) : (
+                                                        <div style={{ height: 28 }}></div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
-                        <div style={{ ...styles.card, ...styles.logContainer, marginTop: 20 }}>
+                        <div style={{ ...styles.card, ...styles.logContainer, marginTop: 0, flexShrink: 0 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
                                 <h4 style={{ margin: 0 }}>יומן פעילות</h4>
                                 <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16 }} onClick={() => setLogs([])} title="נקה יומן">🗑️</button>
@@ -538,30 +540,33 @@ const App = () => {
 
 // --- Styles ---
 const styles: { [key: string]: React.CSSProperties } = {
-    container: { padding: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', gap: 20, overflowY: 'auto' },
+    container: { padding: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100vh', gap: 20, overflow: 'hidden', boxSizing: 'border-box' },
     row: { display: 'flex', gap: 20 },
-    header: { width: '100%', borderBottom: '1px solid #ccc', paddingBottom: 10, marginBottom: 20 },
+    header: { width: '100%', borderBottom: '1px solid #ccc', paddingBottom: 10, marginBottom: 20, flexShrink: 0 },
     card: { background: 'white', padding: 20, borderRadius: 8, boxShadow: '0 2px 5px rgba(0,0,0,0.1)', width: 400, display: 'flex', flexDirection: 'column', gap: 10 },
+    // Specific container for teacher dashboard main content (students) to allow scrolling
+    dashboardContent: { flex: 1, width: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: 20 },
+    scrollableGrid: { flex: 1, width: '100%', overflowY: 'auto', padding: 5, boxSizing: 'border-box' },
     bigButton: { padding: '20px 40px', fontSize: 20, cursor: 'pointer', borderRadius: 8, border: 'none', background: '#007bff', color: 'white' },
     input: { padding: 10, fontSize: 16, borderRadius: 4, border: '1px solid #ccc', textAlign: 'right' }, // RTL
     primaryButton: { padding: 10, background: '#007bff', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' },
     dangerButton: { padding: 10, background: '#dc3545', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' },
     successButton: { padding: 10, background: '#28a745', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' },
-    controls: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, width: '100%' },
-    grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 15, width: '100%' },
-    studentCard: { padding: 15, background: 'white', borderRadius: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column', alignItems: 'center' },
-    studentName: { fontWeight: 'bold', fontSize: 18 },
-    studentGrade: { color: '#666' },
-    status: { margin: '5px 0', fontSize: 12 },
-    actions: { marginTop: 10, display: 'flex', gap: 10 },
+    controls: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, width: '100%' },
+    grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10, width: '100%' },
+    studentCard: { padding: 10, background: 'white', borderRadius: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column', alignItems: 'center' },
+    studentName: { fontWeight: 'bold', fontSize: 16 },
+    studentGrade: { color: '#666', fontSize: 14 },
+    status: { margin: '2px 0', fontSize: 11 },
+    actions: { marginTop: 5, display: 'flex', gap: 5 },
     list: { display: 'flex', flexDirection: 'column', gap: 10 },
     listItem: { padding: 10, border: '1px solid #eee', borderRadius: 4, cursor: 'pointer', background: '#f9f9f9' },
     successMessage: { textAlign: 'center', marginTop: 50 },
     modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
-    logContainer: { width: '90%', height: 250, display: 'flex', flexDirection: 'column' },
+    logContainer: { width: '90%', height: 150, display: 'flex', flexDirection: 'column' },
     logList: { flex: 1, overflowY: 'auto', background: '#f9f9f9', border: '1px solid #eee', borderRadius: 4, padding: 5 },
-    logItem: { padding: '5px 10px', fontSize: 13, borderBottom: '1px solid #eee', display: 'flex', gap: 10 },
-    logTime: { color: '#888', minWidth: 60 },
+    logItem: { padding: '2px 5px', fontSize: 12, borderBottom: '1px solid #eee', display: 'flex', gap: 10 },
+    logTime: { color: '#888', minWidth: 50 },
     logMessage: { flex: 1 },
 };
 
