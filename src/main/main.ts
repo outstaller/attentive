@@ -116,16 +116,18 @@ ipcMain.on(CHANNELS.UNLOCK_ALL, () => {
     teacherService?.unlockAll();
 });
 
-ipcMain.on(CHANNELS.LOCK_STUDENT, (event, socketId: string) => {
+ipcMain.on(CHANNELS.LOCK_STUDENT, (event, arg: string | { timeout?: number }) => {
     // Note: This channel is overloaded. 
-    // If received with an arg, it's Teacher -> Server -> Lock specific student.
-    // If received without arg (from StudentNetworkService), it's Client -> Lock Myself.
-    if (socketId) {
-        teacherService?.lockStudent(socketId);
+    // If received with a string arg, it's Teacher -> Server -> Lock specific student.
+    // If received with object/no arg (from StudentNetworkService), it's Client -> Lock Myself.
+
+    if (typeof arg === 'string') {
+        teacherService?.lockStudent(arg);
     } else {
         // This is the student client signalling itself to lock
+        const timeout = (typeof arg === 'object' && arg?.timeout) ? arg.timeout : undefined;
         if (!lockManager) lockManager = new LockManager();
-        lockManager.lockScreen();
+        lockManager.lockScreen(timeout);
     }
 });
 

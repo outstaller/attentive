@@ -85,7 +85,8 @@ export class StudentNetworkService {
         });
 
         this.socket.on(CHANNELS.LOCK_STUDENT, (data?: { timeout?: number }) => {
-            ipcMain.emit(CHANNELS.LOCK_STUDENT); // Internal signal to LockManager
+            // Internal signal to LockManager - PASS THE DATA
+            ipcMain.emit(CHANNELS.LOCK_STUDENT, undefined, data);
 
             if (this.unlockTimer) clearTimeout(this.unlockTimer);
 

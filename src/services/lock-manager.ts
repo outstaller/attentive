@@ -14,21 +14,22 @@ export class LockManager {
         });
     }
 
-    public lockScreen() {
+    public lockScreen(timeoutMinutes?: number) {
         if (this.isLocked) return;
         this.isLocked = true;
 
         // 1. Create Lock Window if not exists
-        this.createLockWindow();
+        this.createLockWindow(timeoutMinutes);
 
         // 2. Register Shortcuts to block
         this.blockInputs();
 
         // 3. Start Dead Man's Switch
+        const timeoutMs = timeoutMinutes ? (timeoutMinutes * 60 * 1000) : MAX_LOCK_TIME_MS;
         this.unlockTimer = setTimeout(() => {
             console.log('Dead man switch triggered: Force unlocking');
             this.unlockScreen();
-        }, MAX_LOCK_TIME_MS);
+        }, timeoutMs);
     }
 
     public unlockScreen() {
@@ -52,7 +53,7 @@ export class LockManager {
         }
     }
 
-    private createLockWindow() {
+    private createLockWindow(timeoutMinutes?: number) {
         const displays = screen.getAllDisplays();
         // In a multi-monitor setup, we might need multiple windows. 
         // For now, let's cover the primary display or all if possible.
@@ -72,6 +73,7 @@ export class LockManager {
         });
 
         // We can load a simple data URL or a file
+        const durationMs = timeoutMinutes ? (timeoutMinutes * 60 * 1000) : MAX_LOCK_TIME_MS;
         const htmlContent = `
       <!DOCTYPE html>
       <html dir="rtl">
@@ -96,7 +98,7 @@ export class LockManager {
           <div class="message">👩‍🏫 עיניים אל המורה</div>
           <div class="timer" id="timer"></div>
           <script>
-            let duration = ${MAX_LOCK_TIME_MS};
+            let duration = ${durationMs};
             const endTime = Date.now() + duration;
             
             setInterval(() => {
