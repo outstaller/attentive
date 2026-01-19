@@ -46,7 +46,7 @@ exports.UI_STRINGS = {
         saveAndContinue: 'שמור והמשך',
         classChooserTitle: 'בחר כיתה זמינה',
         scanning: 'מחפש כיתות...',
-        connectedTo: 'מחובר ל-',
+        connectedTo: 'מחובר ל',
         waitingForTeacher: 'ממתין להוראות מהמורה...',
         screenLocked: 'עיניים אל המורה',
     }

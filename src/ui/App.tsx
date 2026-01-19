@@ -439,7 +439,7 @@ const App = () => {
                     <div style={styles.successMessage}>
                         <h1>✅</h1>
                         <h2>{UI_STRINGS.student.connectedTo} {connectedTeacher}</h2>
-                        <h3 style={{ marginTop: 0, fontWeight: 'normal' }}>{connectedClassName}</h3>
+                        <h1 style={{ marginTop: 0, fontWeight: 'normal' }}>{connectedClassName}</h1>
                         <p>{UI_STRINGS.student.waitingForTeacher}</p>
                         <p style={{ marginTop: 20, fontSize: '0.8em', color: '#666', maxWidth: 400 }}>
                             {UI_STRINGS.student.privacyDisclaimer}

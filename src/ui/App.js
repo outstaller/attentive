@@ -1,22 +1,22 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function (o, m, k, k2) {
     if (k2 === undefined) k2 = k;
     var desc = Object.getOwnPropertyDescriptor(m, k);
     if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
+        desc = { enumerable: true, get: function () { return m[k]; } };
     }
     Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
+}) : (function (o, m, k, k2) {
     if (k2 === undefined) k2 = k;
     o[k2] = m[k];
 }));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function (o, v) {
     Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
+}) : function (o, v) {
     o["default"] = v;
 });
 var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
+    var ownKeys = function (o) {
         ownKeys = Object.getOwnPropertyNames || function (o) {
             var ar = [];
             for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
@@ -151,22 +151,22 @@ const App = () => {
                 react_1.default.createElement("input", { style: styles.input, placeholder: constants_1.UI_STRINGS.teacher.teacherName, value: teacherName, onChange: e => { setTeacherName(e.target.value); saveSetting('teacherName', e.target.value); } }),
                 react_1.default.createElement("input", { style: styles.input, placeholder: constants_1.UI_STRINGS.teacher.className, value: className, onChange: e => { setClassName(e.target.value); saveSetting('className', e.target.value); } }),
                 react_1.default.createElement("button", { style: styles.primaryButton, onClick: startTeacher }, constants_1.UI_STRINGS.teacher.startClass))) : (react_1.default.createElement("div", { style: Object.assign(Object.assign({}, styles.card), { width: '90%' }) },
-                react_1.default.createElement("div", { style: styles.controls },
-                    react_1.default.createElement("div", null,
-                        react_1.default.createElement("strong", null,
-                            "\u05E9\u05D9\u05E2\u05D5\u05E8: ",
-                            className,
-                            " "),
-                        " | IP: ",
-                        require('ip').address()),
-                    react_1.default.createElement("div", null,
-                        react_1.default.createElement("button", { style: styles.dangerButton, onClick: lockAll }, constants_1.UI_STRINGS.teacher.lockAll),
-                        react_1.default.createElement("button", { style: styles.successButton, onClick: unlockAll }, constants_1.UI_STRINGS.teacher.unlockAll))),
-                react_1.default.createElement("div", { style: styles.grid }, students.map(s => (react_1.default.createElement("div", { key: s.id, style: Object.assign(Object.assign({}, styles.studentCard), { border: s.status === 'locked' ? '2px solid red' : '1px solid #ddd' }) },
-                    react_1.default.createElement("div", { style: styles.studentName }, s.name),
-                    react_1.default.createElement("div", { style: styles.studentGrade }, s.grade),
-                    react_1.default.createElement("div", { style: styles.status }, s.status === 'locked' ? constants_1.UI_STRINGS.teacher.statusLocked : constants_1.UI_STRINGS.teacher.statusActive),
-                    react_1.default.createElement("div", { style: styles.actions }, s.status === 'locked' ? (react_1.default.createElement("button", { onClick: () => unlockStudent(s.id) }, "\uD83D\uDD13")) : (react_1.default.createElement("button", { onClick: () => lockStudent(s.id) }, "\uD83D\uDD12")))))))))));
+                    react_1.default.createElement("div", { style: styles.controls },
+                        react_1.default.createElement("div", null,
+                            react_1.default.createElement("strong", null,
+                                "\u05E9\u05D9\u05E2\u05D5\u05E8: ",
+                                className,
+                                " "),
+                            " | IP: ",
+                            require('ip').address()),
+                        react_1.default.createElement("div", null,
+                            react_1.default.createElement("button", { style: styles.dangerButton, onClick: lockAll }, constants_1.UI_STRINGS.teacher.lockAll),
+                            react_1.default.createElement("button", { style: styles.successButton, onClick: unlockAll }, constants_1.UI_STRINGS.teacher.unlockAll))),
+                    react_1.default.createElement("div", { style: styles.grid }, students.map(s => (react_1.default.createElement("div", { key: s.id, style: Object.assign(Object.assign({}, styles.studentCard), { border: s.status === 'locked' ? '2px solid red' : '1px solid #ddd' }) },
+                        react_1.default.createElement("div", { style: styles.studentName }, s.name),
+                        react_1.default.createElement("div", { style: styles.studentGrade }, s.grade),
+                        react_1.default.createElement("div", { style: styles.status }, s.status === 'locked' ? constants_1.UI_STRINGS.teacher.statusLocked : constants_1.UI_STRINGS.teacher.statusActive),
+                        react_1.default.createElement("div", { style: styles.actions }, s.status === 'locked' ? (react_1.default.createElement("button", { onClick: () => unlockStudent(s.id) }, "\uD83D\uDD13")) : (react_1.default.createElement("button", { onClick: () => lockStudent(s.id) }, "\uD83D\uDD12")))))))))));
     }
     // --- Render Student ---
     if (mode === 'student') {
@@ -176,7 +176,7 @@ const App = () => {
                     react_1.default.createElement("h1", null, "\u2705"),
                     react_1.default.createElement("h2", null,
                         constants_1.UI_STRINGS.student.connectedTo,
-                        " ",
+                        "",
                         connectedTeacher),
                     react_1.default.createElement("p", null, constants_1.UI_STRINGS.student.waitingForTeacher))));
         }
