@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, globalShortcut } from 'electron';
+import { app, BrowserWindow, ipcMain, globalShortcut, dialog } from 'electron';
 import path from 'path';
 import { TeacherNetworkService } from '../services/network-teacher';
 import { StudentNetworkService } from '../services/network-student';
@@ -6,6 +6,7 @@ import { LockManager } from '../services/lock-manager';
 import { CHANNELS } from '../shared/constants';
 import { BeaconPacket } from '../shared/types';
 import Store from 'electron-store';
+import { autoUpdater } from 'electron-updater';
 
 const store = new Store();
 
@@ -37,6 +38,30 @@ const createWindow = () => {
 
 app.whenReady().then(() => {
     createWindow();
+
+    // Check for updates
+    // We can conditionally set the feed URL if needed, but electron-builder config usually handles it.
+    // However, since we have one main.ts for two apps, we might need to be careful if they share the same package.json versions but different artifacts.
+    // But typically autoUpdater reads from app-update.yml generated at build time.
+
+    autoUpdater.checkForUpdatesAndNotify();
+
+    setInterval(() => {
+        autoUpdater.checkForUpdatesAndNotify();
+    }, 60 * 60 * 1000); // Check every hour
+
+    autoUpdater.on('update-downloaded', () => {
+        dialog.showMessageBox({
+            type: 'info',
+            title: 'Update Ready',
+            message: 'A new version has been downloaded. Restart now to install?',
+            buttons: ['Restart', 'Later']
+        }).then((result) => {
+            if (result.response === 0) {
+                autoUpdater.quitAndInstall();
+            }
+        });
+    });
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) createWindow();

@@ -24,5 +24,11 @@
     },
     "extraResources": [
         "student.flag"
+    ],
+    "publish": [
+        {
+            "provider": "generic",
+            "url": "https://outstaller.github.io/attentive/update-manager/student/"
+        }
     ]
 }
