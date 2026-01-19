@@ -1,3 +1,11 @@
+// ============================================================================
+// Teacher Network Service
+// ============================================================================
+// Handles the backend logic for the Teacher mode:
+// 1. Broadcasts UDP beacons so students can discover the class.
+// 2. Runs a Socket.IO server to maintain connections with students.
+// 3. Manages student state (locked, active, disconnected).
+
 import dgram from 'dgram';
 import crypto from 'crypto';
 import { Server as SocketIOServer, Socket } from 'socket.io';
@@ -12,15 +20,23 @@ export class TeacherNetworkService {
     private udpSocket: dgram.Socket | null = null;
     private io: SocketIOServer | null = null;
     private httpServer: http.Server | null = null;
+
+    // Timer for sending UDP beacons every 2 seconds
     private beaconTimer: NodeJS.Timeout | null = null;
-    private students: Map<string, Student> = new Map(); // UniqueID -> Student
-    private socketToStudentId: Map<string, string> = new Map(); // SocketID -> UniqueID
+
+    // Active student tracking
+    private students: Map<string, Student> = new Map(); // Mapped by UniqueID (Name+Grade)
+    private socketToStudentId: Map<string, string> = new Map(); // Helper for disconnects
+
     private isClassLocked: boolean = false;
     private mainWindow: WebContents;
-    private lockTimeout: number = 60; // Minutes
-    private classLockTimer: NodeJS.Timeout | null = null;
-    private studentLockTimers: Map<string, NodeJS.Timeout> = new Map(); // UniqueID -> Timer
 
+    // Configurable Auto-Unlock Timer (default 60m)
+    private lockTimeout: number = 60;
+
+    /**
+     * Sends a log entry to the UI renderer process.
+     */
     private log(message: string, type: 'info' | 'warning' | 'error' = 'info') {
         if (!this.mainWindow.isDestroyed()) {
             this.mainWindow.send(CHANNELS.LOG_ENTRY, {
@@ -38,28 +54,45 @@ export class TeacherNetworkService {
         this.mainWindow = webContents;
     }
 
+    /**
+     * initializes the Class Session.
+     * @param className The name to modify in beacons
+     * @param teacherName The teacher's display name
+     * @param password Optional password for the class
+     * @param lockTimeout Auto-unlock duration in minutes
+     */
     public async start(className: string, teacherName: string, password?: string, lockTimeout?: number) {
         this.password = password || '';
         this.lockTimeout = lockTimeout || 60;
         this.currentSessionId = crypto.randomUUID();
+
+        // Start broadcasting existence
         this.startUDPServer(className, teacherName);
+
+        // Start listening for connections
         this.startSocketServer();
+
         this.log(`הכיתה נפתחה (זמן נעילה אוטומטי: ${this.lockTimeout} דקות)`, 'info');
     }
 
+    /**
+     * Stops all network services and clears state.
+     */
     public stop() {
         if (this.beaconTimer) clearInterval(this.beaconTimer);
-        if (this.classLockTimer) clearTimeout(this.classLockTimer);
-        this.studentLockTimers.forEach(timer => clearTimeout(timer));
-        this.studentLockTimers.clear();
 
         if (this.udpSocket) this.udpSocket.close();
         if (this.io) this.io.close();
         if (this.httpServer) this.httpServer.close();
+
         this.students.clear();
         this.socketToStudentId.clear();
     }
 
+    /**
+     * Sets up the UDP Broadcast mechanism.
+     * broadcast packets to port 41234 on all interfaces.
+     */
     private startUDPServer(className: string, teacherName: string) {
         this.udpSocket = dgram.createSocket('udp4');
 
@@ -80,6 +113,7 @@ export class TeacherNetworkService {
             sessionId: this.currentSessionId,
         };
 
+        // Broadcast Loop (every 2 seconds)
         this.beaconTimer = setInterval(() => {
             const interfaces = os.networkInterfaces();
 
@@ -89,6 +123,7 @@ export class TeacherNetworkService {
                     if (iface.family === 'IPv4' && !iface.internal) {
 
                         // Calculate Broadcast Address - Fallback to .255 assumption
+                        // This allows broadcast to work on subnet x.x.x.255
                         const parts = iface.address.split('.');
                         parts[3] = '255';
                         const broadcastAddr = parts.join('.');
@@ -108,6 +143,10 @@ export class TeacherNetworkService {
             }
         }, 2000);
     }
+
+    /**
+     * Sets up the TCP Socket.IO server for reliable communication.
+     */
     private startSocketServer() {
         this.httpServer = http.createServer();
         this.io = new SocketIOServer(this.httpServer, {
@@ -128,19 +167,20 @@ export class TeacherNetworkService {
         this.io.on('connection', (socket: Socket) => {
             console.log('Student connected:', socket.id);
 
+            // Expect student to send their info immediately
             socket.on(CHANNELS.SET_USER_INFO, (info: { name: string; grade: string }) => {
                 const uniqueId = `${info.name}_${info.grade}`;
                 let student = this.students.get(uniqueId);
 
                 if (student) {
-                    // Reconnection
+                    // Student Reconnecting (e.g., app restarted or network blip)
                     student.socketId = socket.id;
                     student.status = this.isClassLocked ? 'locked' : 'active';
                     student.lastSeen = Date.now();
                     student.connectedAt = Date.now();
                     student.ip = socket.handshake.address;
                 } else {
-                    // New connection
+                    // New Connection
                     student = {
                         id: uniqueId,
                         socketId: socket.id,
@@ -161,7 +201,7 @@ export class TeacherNetworkService {
 
                 this.log(`תלמיד התחבר: ${info.name} (כיתה ${info.grade})`, 'info');
 
-                // Sync lock state
+                // If class is currently locked, lock the new student immediately
                 if (this.isClassLocked) {
                     socket.emit(CHANNELS.LOCK_STUDENT, { timeout: this.lockTimeout });
                 }
@@ -173,11 +213,14 @@ export class TeacherNetworkService {
                     const student = this.students.get(uniqueId);
                     if (student) {
                         student.status = 'disconnected';
+
+                        // Update total duration session time
                         if (student.connectedAt) {
                             student.totalDuration = (student.totalDuration || 0) + (Date.now() - student.connectedAt);
                             student.connectedAt = undefined;
                         }
-                        student.socketId = undefined; // Clear socket ID
+
+                        student.socketId = undefined; // Clear socket ID so we know they are gone
                         this.log(`תלמיד התנתק: ${student.name}`, 'warning');
                     }
                     this.socketToStudentId.delete(socket.id);
@@ -194,32 +237,27 @@ export class TeacherNetworkService {
         });
     }
 
+    /**
+     * Locks the entire class.
+     * Broadcasts the LOCK signal with the configured timeout.
+     */
     public lockAll() {
         this.isClassLocked = true;
         this.io?.emit(CHANNELS.LOCK_STUDENT, { timeout: this.lockTimeout });
         this.updateAllStatuses('locked');
         this.log('הכיתה ננעלה', 'warning');
-
-        // Schedule Unlock
-        if (this.classLockTimer) clearTimeout(this.classLockTimer);
-        this.classLockTimer = setTimeout(() => {
-            this.unlockAll();
-            this.log(`הכיתה שוחררה אוטומטית (עבר זמן ${this.lockTimeout} דקות)`, 'info');
-        }, this.lockTimeout * 60 * 1000);
     }
 
     public unlockAll() {
         this.isClassLocked = false;
-        if (this.classLockTimer) {
-            clearTimeout(this.classLockTimer);
-            this.classLockTimer = null;
-        }
-
         this.io?.emit(CHANNELS.UNLOCK_STUDENT);
         this.updateAllStatuses('active');
         this.log('הכיתה שוחררה', 'info');
     }
 
+    /**
+     * Locks a specific student.
+     */
     public lockStudent(uniqueId: string) {
         const student = this.students.get(uniqueId);
         if (student) {
@@ -228,15 +266,6 @@ export class TeacherNetworkService {
             }
             this.updateStudentStatus(uniqueId, 'locked');
             this.log(`תלמיד ננעל: ${student.name}`, 'warning');
-
-            // Schedule Unlock
-            if (this.studentLockTimers.has(uniqueId)) clearTimeout(this.studentLockTimers.get(uniqueId)!);
-            const timer = setTimeout(() => {
-                this.unlockStudent(uniqueId);
-                this.log(`תלמיד שוחרר אוטומטית: ${student.name}`, 'info');
-                this.studentLockTimers.delete(uniqueId);
-            }, this.lockTimeout * 60 * 1000);
-            this.studentLockTimers.set(uniqueId, timer);
         }
     }
 
@@ -247,13 +276,6 @@ export class TeacherNetworkService {
                 this.io?.to(student.socketId).emit(CHANNELS.UNLOCK_STUDENT);
             }
             this.updateStudentStatus(uniqueId, 'active');
-
-            // Clear Timer
-            if (this.studentLockTimers.has(uniqueId)) {
-                clearTimeout(this.studentLockTimers.get(uniqueId)!);
-                this.studentLockTimers.delete(uniqueId);
-            }
-
             this.log(`תלמיד שוחרר: ${student.name}`, 'info');
         }
     }
@@ -274,7 +296,7 @@ export class TeacherNetworkService {
         this.io?.sockets.sockets.forEach((socket) => {
             socket.disconnect(true);
         });
-        // The disconnect handlers will clean up
+        // The disconnect handlers will clean up state
         this.log('כל התלמידים המחוברים נותקו', 'warning');
     }
 

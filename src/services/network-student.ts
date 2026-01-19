@@ -1,3 +1,11 @@
+// ============================================================================
+// Student Network Service
+// ============================================================================
+// Handles the client-side logic for the Student mode:
+// 1. Listens for UDP beacons to find classes.
+// 2. Connects to the Teacher via Socket.io.
+// 3. Handles Lock/Unlock signals and manages the local auto-unlock timer.
+
 import dgram from 'dgram';
 import { io, Socket } from 'socket.io-client';
 import { ipcMain, WebContents } from 'electron';
@@ -10,6 +18,7 @@ export class StudentNetworkService {
     private mainWindow: WebContents;
     private connectedClass: { ip: string; port: number } | null = null;
     private wasKicked: boolean = false;
+    // Timer to auto-unlock if the teacher disappears or app crashes
     private unlockTimer: NodeJS.Timeout | null = null;
 
     constructor(webContents: WebContents) {
@@ -20,6 +29,10 @@ export class StudentNetworkService {
         this.mainWindow = webContents;
     }
 
+    /**
+     * Starts listening for UDP broadcasts from teachers.
+     * Packets found are sent to the UI.
+     */
     public startDiscovery() {
         this.udpSocket = dgram.createSocket('udp4');
         // ... (omitting unchanged discovery logic) ...
@@ -49,6 +62,9 @@ export class StudentNetworkService {
         });
     }
 
+    /**
+     * Stops listening for UDP broadcasts.
+     */
     public stopDiscovery() {
         if (this.udpSocket) {
             this.udpSocket.close();
@@ -56,6 +72,10 @@ export class StudentNetworkService {
         }
     }
 
+    /**
+     * Connects to a selected class via Socket.IO.
+     * Handles authentication and sets up lock listeners.
+     */
     public connectToClass(ip: string, port: number, info: { name: string; grade: string }, password?: string) {
         if (this.socket) this.socket.disconnect();
 
@@ -84,10 +104,12 @@ export class StudentNetworkService {
             this.stopDiscovery(); // Stop listening once connected
         });
 
+        // --- Handle Lock Signal ---
         this.socket.on(CHANNELS.LOCK_STUDENT, (data?: { timeout?: number }) => {
             // Internal signal to LockManager - PASS THE DATA
             ipcMain.emit(CHANNELS.LOCK_STUDENT, undefined, data);
 
+            // Set local auto-unlock timer
             if (this.unlockTimer) clearTimeout(this.unlockTimer);
 
             if (data?.timeout) {
@@ -100,6 +122,7 @@ export class StudentNetworkService {
             }
         });
 
+        // --- Handle Unlock Signal ---
         this.socket.on(CHANNELS.UNLOCK_STUDENT, () => {
             if (this.unlockTimer) {
                 clearTimeout(this.unlockTimer);

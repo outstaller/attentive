@@ -1,3 +1,9 @@
+// ============================================================================
+// Main Process Entry Point
+// ============================================================================
+// This file controls the app lifecycle, creates windows, and manages resources.
+// It also coordinates the Auto-Update mechanism and Inter-Process Communication (IPC).
+
 import { app, BrowserWindow, ipcMain, globalShortcut, dialog } from 'electron';
 import path from 'path';
 import { TeacherNetworkService } from '../services/network-teacher';
@@ -8,6 +14,7 @@ import { BeaconPacket } from '../shared/types';
 import Store from 'electron-store';
 import { autoUpdater } from 'electron-updater';
 
+// Persistent store for user preferences (name, class name, etc.)
 const store = new Store();
 
 let mainWindow: BrowserWindow | null = null;
@@ -15,12 +22,16 @@ let teacherService: TeacherNetworkService | null = null;
 let studentService: StudentNetworkService | null = null;
 let lockManager: LockManager | null = null;
 
+/**
+ * Creates the main application window.
+ * The UI is loaded from index.html (React).
+ */
 const createWindow = () => {
     mainWindow = new BrowserWindow({
         width: 1000,
         height: 700,
         webPreferences: {
-            nodeIntegration: true,
+            nodeIntegration: true, // Enabled for this prototype to allow direct IPC access
             contextIsolation: false, // Simplifying for this prototype
             // preload: path.join(__dirname, 'preload.js'),
         },
@@ -28,7 +39,7 @@ const createWindow = () => {
         icon: path.join(__dirname, '../ui/assets/icon.png'),
     });
 
-    // Load the UI - in dev usage you might load localhost:3000, here we load index.html
+    // Load the React application
     mainWindow.loadFile(path.join(__dirname, '../ui/index.html'));
 
     mainWindow.on('closed', () => {
@@ -36,20 +47,26 @@ const createWindow = () => {
     });
 };
 
+// ============================================================================
+// App Lifecycle & Auto-Updater
+// ============================================================================
+
 app.whenReady().then(() => {
     createWindow();
 
-    // Check for updates
-    // We can conditionally set the feed URL if needed, but electron-builder config usually handles it.
-    // However, since we have one main.ts for two apps, we might need to be careful if they share the same package.json versions but different artifacts.
-    // But typically autoUpdater reads from app-update.yml generated at build time.
+    // --- Auto-Update Configuration ---
+    // The feed URL is configured in electron-builder.json (generic provider).
+    // This logic checks for updates immediately on startup and then every hour.
 
+    // Check immediately
     autoUpdater.checkForUpdatesAndNotify();
 
+    // Poll every hour
     setInterval(() => {
         autoUpdater.checkForUpdatesAndNotify();
-    }, 60 * 60 * 1000); // Check every hour
+    }, 60 * 60 * 1000);
 
+    // Notify user when an update is fully downloaded and ready to install
     autoUpdater.on('update-downloaded', () => {
         dialog.showMessageBox({
             type: 'info',
@@ -74,6 +91,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
+    // Cleanup services on exit
     if (teacherService) teacherService.stop();
     if (studentService) {
         studentService.stopDiscovery();
@@ -82,9 +100,11 @@ app.on('will-quit', () => {
     // LockManager handles its own unregisterAll
 });
 
-// --- IPC Handlers ---
+// ============================================================================
+// IPC Handlers - Communication between UI and Back-end
+// ============================================================================
 
-// Check for enforced mode via flag files in resources directory
+// Check for enforced mode via flag files (set by installer) in resources directory
 const fs = require('fs');
 const resourcesPath = process.resourcesPath;
 
@@ -99,7 +119,7 @@ ipcMain.handle(CHANNELS.APP_MODE, () => {
     return enforcedMode;
 });
 
-// Store Handlers
+// Store Handlers (Get/Set settings)
 ipcMain.handle(CHANNELS.STORE_GET, (event, key) => {
     return store.get(key);
 });
@@ -108,9 +128,11 @@ ipcMain.on(CHANNELS.STORE_SET, (event, key, val) => {
     store.set(key, val);
 });
 
-// Teacher Mode handlers
+// --- Teacher Mode Handlers ---
 ipcMain.on(CHANNELS.START_TEACHER, (event, { name, className, password, lockTimeout }) => {
     if (!mainWindow) return;
+
+    // Cleanup any existing services to ensure clean state
     if (studentService) {
         studentService.stop();
         studentService = null;
@@ -118,6 +140,8 @@ ipcMain.on(CHANNELS.START_TEACHER, (event, { name, className, password, lockTime
     if (teacherService) {
         teacherService.stop();
     }
+
+    // Initialize Teacher Service
     teacherService = new TeacherNetworkService(mainWindow.webContents);
     teacherService.start(className, name, password, lockTimeout);
     console.log(`Teacher Service Started for ${name} - ${className}`);
@@ -125,7 +149,7 @@ ipcMain.on(CHANNELS.START_TEACHER, (event, { name, className, password, lockTime
 
 ipcMain.on(CHANNELS.STOP_TEACHER, () => {
     if (teacherService) {
-        teacherService.kickAll(); // Disconnect everyone cleanly first
+        teacherService.kickAll(); // Gracefully disconnect students
         setTimeout(() => { // Give a moment for kick packets to send? Or just stop.
             teacherService?.stop();
             teacherService = null;
@@ -142,13 +166,16 @@ ipcMain.on(CHANNELS.UNLOCK_ALL, () => {
 });
 
 ipcMain.on(CHANNELS.LOCK_STUDENT, (event, arg: string | { timeout?: number }) => {
-    // Note: This channel is overloaded. 
+    // Note: This channel is overloaded to handle both Teacher->Student and Student->Self scenarios.
     // If received with a string arg, it's Teacher -> Server -> Lock specific student.
     // If received with object/no arg (from StudentNetworkService), it's Client -> Lock Myself.
 
+    // Case 1: String arg = Teacher locking a specific student by Socket ID
     if (typeof arg === 'string') {
         teacherService?.lockStudent(arg);
-    } else {
+    }
+    // Case 2: Object/Undefined arg = Student client requesting to lock itself (LockManager)
+    else {
         // This is the student client signalling itself to lock
         const timeout = (typeof arg === 'object' && arg?.timeout) ? arg.timeout : undefined;
         if (!lockManager) lockManager = new LockManager();
@@ -156,9 +183,11 @@ ipcMain.on(CHANNELS.LOCK_STUDENT, (event, arg: string | { timeout?: number }) =>
     }
 });
 
-// Student Mode handlers
+// --- Student Mode Handlers ---
 ipcMain.on(CHANNELS.START_STUDENT, (event) => {
     if (!mainWindow) return;
+
+    // Cleanup
     if (teacherService) {
         teacherService.stop();
         teacherService = null;
@@ -166,6 +195,8 @@ ipcMain.on(CHANNELS.START_STUDENT, (event) => {
     if (studentService) {
         studentService.stop();
     }
+
+    // Initialize Student Service
     studentService = new StudentNetworkService(mainWindow.webContents);
     lockManager = new LockManager();
 
@@ -189,9 +220,13 @@ ipcMain.on(CHANNELS.CONNECT_TO_CLASS, (event, { ip, port, studentInfo, password 
 // So the handler above `ipcMain.on(CHANNELS.LOCK_STUDENT, ...)` handles both.
 
 ipcMain.on(CHANNELS.UNLOCK_STUDENT, (event, socketId: string) => {
+    // Overloaded Channel:
+    // If socketId is present + Teacher Service exists -> Teacher unlocking a specific student.
     if (socketId && teacherService) {
         teacherService.unlockStudent(socketId);
-    } else {
+    }
+    // Otherwise -> Student client unlocking itself (LockManager).
+    else {
         lockManager?.unlockScreen();
     }
 });

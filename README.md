@@ -81,5 +81,26 @@ The output installers will be in the `release/` directory.
 - **Firewall**: The installer acts as a helper to configure Windows Firewall rules for "Attentive". If running from source, assume UDP Port `41234` and TCP Port `3000` need to be allowed.
 - **Kiosk Limitations**: On Windows/Mac, blocking system keys like `Ctrl+Alt+Del` or `Cmd+Option+Esc` requires lower-level OS permissions or signed drivers, which is out of scope for pure Electron. The current implementation uses "best effort" blocking suitable for standard classroom environments.
 
+## 🔄 Auto-Update Mechanism
+The application uses `electron-updater` with a generic provider hosted on GitHub Pages.
+
+### Configuration
+1.  **Repo**: Updates are hosted at `https://outstaller.github.io/attentive/update-manager/`.
+2.  **Structure**:
+    - `.../update-manager/student/` -> Contains student updates
+    - `.../update-manager/teacher/` -> Contains teacher updates
+
+### How to Deploy an Update
+1.  **Increment Version**: Update `version` in `package.json`.
+2.  **Build**:
+    ```bash
+    npm run dist:teacher
+    npm run dist:student
+    ```
+3.  **Upload**:
+    - Copy the generated `.exe`, `.blockmap`, and `latest.yml` files from `release/teacher` to your GitHub Pages `update-manager/teacher` folder.
+    - Do the same for student files in `update-manager/student`.
+4.  **Push**: Commit and push changes to GitHub. The apps will detect the new version on next launch (or within 1 hour).
+
 ## 📜 License
 ISC

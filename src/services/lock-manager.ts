@@ -1,6 +1,14 @@
-import { BrowserWindow, globalShortcut, screen, app } from 'electron';
-import { MAX_LOCK_TIME_MS } from '../shared/constants';
+// ============================================================================
+// Lock Manager (Kiosk Mode)
+// ============================================================================
+// Controls the physical locking of the student's screen.
+// 1. Spawns a full-screen, always-on-top Kiosk window.
+// 2. Registers global shortcuts to block inputs (Alt+Tab, etc.).
+// 3. Implements a Dead Man's Switch (auto-unlock) as a fail-safe.
+
+import { BrowserWindow, globalShortcut, screen, ipcMain } from 'electron';
 import path from 'path';
+import { CHANNELS, MAX_LOCK_TIME_MS } from '../shared/constants';
 
 export class LockManager {
     private lockWindow: BrowserWindow | null = null;
@@ -8,12 +16,13 @@ export class LockManager {
     private unlockTimer: NodeJS.Timeout | null = null;
 
     constructor() {
-        // Register fail-safe to unregister shortcuts on quit
-        app.on('will-quit', () => {
-            globalShortcut.unregisterAll();
-        });
+        // Prepare resources if needed
     }
 
+    /**
+     * Locks the screen by creating a covering window and blocking shortcuts.
+     * @param timeoutMinutes Optional dynamic timeout from the teacher.
+     */
     public lockScreen(timeoutMinutes?: number) {
         if (this.isLocked) return;
         this.isLocked = true;
@@ -36,15 +45,14 @@ export class LockManager {
         if (!this.isLocked) return;
         this.isLocked = false;
 
-        // 1. Destroy Lock Window
-        if (this.lockWindow) {
-            this.lockWindow.setClosable(true);
+        // 1. Close Window
+        if (this.lockWindow && !this.lockWindow.isDestroyed()) {
             this.lockWindow.close();
-            this.lockWindow = null;
         }
+        this.lockWindow = null;
 
-        // 2. Unregister Shortcuts
-        globalShortcut.unregisterAll();
+        // 2. Unblock Inputs
+        this.unblockInputs();
 
         // 3. Clear Timer
         if (this.unlockTimer) {
@@ -53,11 +61,53 @@ export class LockManager {
         }
     }
 
+    /**
+     * Registers global shortcuts to consume standard user escape keys.
+     * Note: OS-level keys like Ctrl+Alt+Del cannot be blocked by Electron.
+     */
+    private blockInputs() {
+        // Prevent Alt+Tab, Alt+F4, Windows Key, etc.
+        // This is "best effort" on Windows.
+        const shortcutsToBlock = [
+            'Alt+Tab',
+            'Alt+F4',
+            'Super', // Windows Key
+            'CommandOrControl+Escape',
+            'Alt+Space',
+            'F11',
+            'Control+Shift+Escape', // Task Manager (often blocked by OS, but worth trying)
+        ];
+
+        shortcutsToBlock.forEach(shortcut => {
+            try {
+                if (!globalShortcut.isRegistered(shortcut)) {
+                    globalShortcut.register(shortcut, () => {
+                        console.log(`Blocked shortcut: ${shortcut}`);
+                        // Focus lock window aggressively
+                        if (this.lockWindow && !this.lockWindow.isDestroyed()) {
+                            this.lockWindow.show();
+                            this.lockWindow.focus();
+                            this.lockWindow.setAlwaysOnTop(true, 'screen-saver');
+                        }
+                    });
+                }
+            } catch (e) {
+                console.warn(`Failed to block ${shortcut}`, e);
+            }
+        });
+    }
+
+    private unblockInputs() {
+        globalShortcut.unregisterAll();
+    }
+
+    /**
+     * Creates the overlay window that physically blocks the screen.
+     */
     private createLockWindow(timeoutMinutes?: number) {
         const displays = screen.getAllDisplays();
-        // In a multi-monitor setup, we might need multiple windows. 
-        // For now, let's cover the primary display or all if possible.
-        // Electron Kiosk mode usually handles the main screen well.
+        // In a multi-monitor setup, we currently cover the primary display.
+        // Electron Kiosk mode usually handles the main screen.
 
         this.lockWindow = new BrowserWindow({
             fullscreen: true,
@@ -72,7 +122,8 @@ export class LockManager {
             }
         });
 
-        // We can load a simple data URL or a file
+        // We use a generated HTML string to render the lock screen
+        // This avoids needing a separate HTML file for the lock view.
         const durationMs = timeoutMinutes ? (timeoutMinutes * 60 * 1000) : MAX_LOCK_TIME_MS;
         const htmlContent = `
       <!DOCTYPE html>
@@ -102,16 +153,15 @@ export class LockManager {
             const endTime = Date.now() + duration;
             
             setInterval(() => {
-                const now = Date.now();
-                const diff = endTime - now;
-                
-                if (diff <= 0) {
-                    document.getElementById('timer').innerText = "משוחרר...";
-                } else {
-                    const minutes = Math.floor(diff / 60000);
-                    const seconds = Math.floor((diff % 60000) / 1000);
-                    document.getElementById('timer').innerText = "שחרור אוטומטי בעוד: " + minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
-                }
+              const remaining = endTime - Date.now();
+              if (remaining <= 0) {
+                 document.getElementById('timer').innerText = "משחרר...";
+              } else {
+                 const minutes = Math.floor(remaining / 60000);
+                 const seconds = Math.floor((remaining % 60000) / 1000);
+                 document.getElementById('timer').innerText = 
+                    minutes + ":" + (seconds < 10 ? '0' : '') + seconds;
+              }
             }, 1000);
           </script>
         </body>
@@ -119,9 +169,6 @@ export class LockManager {
     `;
 
         this.lockWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
-        this.lockWindow.on('closed', () => {
-            this.lockWindow = null;
-        });
 
         // Prevent closing via Alt+F4 is handled by 'closable: false' and 'kiosk', 
         // but proactive event killing is good practice in C#/Win32, less so in Electron js unless we intercept the close event.
@@ -130,15 +177,4 @@ export class LockManager {
         });
     }
 
-    private blockInputs() {
-        // Block common escape keys
-        // Note: Windows system keys (Ctrl+Alt+Del, Win+L) cannot be blocked by Electron without low-level hooks or DLLs.
-        // But we can annoy the user or block Alt+Tab.
-
-        globalShortcut.register('Alt+Tab', () => { return false; });
-        globalShortcut.register('CommandOrControl+Tab', () => { return false; });
-        globalShortcut.register('Alt+F4', () => { return false; });
-        globalShortcut.register('F11', () => { return false; });
-        globalShortcut.register('Escape', () => { return false; });
-    }
 }
