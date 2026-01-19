@@ -223,13 +223,17 @@ ipcMain.on(CHANNELS.CONNECT_TO_CLASS, (event, { ip, port, studentInfo, password,
 // So the handler above `ipcMain.on(CHANNELS.LOCK_STUDENT, ...)` handles both.
 
 ipcMain.on(CHANNELS.UNLOCK_STUDENT, (event, socketId: string) => {
+    console.log('Main Process: UNLOCK_STUDENT received. socketId:', socketId, 'teacherService:', !!teacherService, 'lockManager:', !!lockManager);
+
     // Overloaded Channel:
     // If socketId is present + Teacher Service exists -> Teacher unlocking a specific student.
     if (socketId && teacherService) {
+        console.log('Unlocking via Teacher Service');
         teacherService.unlockStudent(socketId);
     }
     // Otherwise -> Student client unlocking itself (LockManager).
     else {
+        console.log('Unlocking via local LockManager');
         lockManager?.unlockScreen();
     }
 });

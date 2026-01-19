@@ -42,12 +42,16 @@ export class LockManager {
     }
 
     public unlockScreen() {
+        console.log('LockManager.unlockScreen called. isLocked:', this.isLocked);
         if (!this.isLocked) return;
         this.isLocked = false;
 
         // 1. Close Window
         if (this.lockWindow && !this.lockWindow.isDestroyed()) {
+            console.log('Closing lock window');
             this.lockWindow.close();
+        } else {
+            console.log('Lock window is null or destroyed');
         }
         this.lockWindow = null;
 
