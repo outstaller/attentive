@@ -76,7 +76,7 @@ export class StudentNetworkService {
      * Connects to a selected class via Socket.IO.
      * Handles authentication and sets up lock listeners.
      */
-    public connectToClass(ip: string, port: number, info: { name: string; grade: string }, password?: string) {
+    public connectToClass(ip: string, port: number, info: { name: string; grade: string }, password?: string, teacherInfo?: { teacherName: string; className: string }) {
         if (this.socket) this.socket.disconnect();
 
         this.connectedClass = { ip, port };
@@ -107,7 +107,13 @@ export class StudentNetworkService {
         // --- Handle Lock Signal ---
         this.socket.on(CHANNELS.LOCK_STUDENT, (data?: { timeout?: number }) => {
             // Internal signal to LockManager - PASS THE DATA
-            ipcMain.emit(CHANNELS.LOCK_STUDENT, undefined, data);
+            // Augment data with teacher info for display
+            const lockData = {
+                ...data,
+                teacherName: teacherInfo?.teacherName,
+                className: teacherInfo?.className
+            };
+            ipcMain.emit(CHANNELS.LOCK_STUDENT, undefined, lockData);
 
             // Set local auto-unlock timer
             if (this.unlockTimer) clearTimeout(this.unlockTimer);

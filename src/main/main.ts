@@ -165,7 +165,7 @@ ipcMain.on(CHANNELS.UNLOCK_ALL, () => {
     teacherService?.unlockAll();
 });
 
-ipcMain.on(CHANNELS.LOCK_STUDENT, (event, arg: string | { timeout?: number }) => {
+ipcMain.on(CHANNELS.LOCK_STUDENT, (event, arg: string | { timeout?: number, teacherName?: string, className?: string }) => {
     // Note: This channel is overloaded to handle both Teacher->Student and Student->Self scenarios.
     // If received with a string arg, it's Teacher -> Server -> Lock specific student.
     // If received with object/no arg (from StudentNetworkService), it's Client -> Lock Myself.
@@ -178,8 +178,11 @@ ipcMain.on(CHANNELS.LOCK_STUDENT, (event, arg: string | { timeout?: number }) =>
     else {
         // This is the student client signalling itself to lock
         const timeout = (typeof arg === 'object' && arg?.timeout) ? arg.timeout : undefined;
+        const teacherName = (typeof arg === 'object' && arg?.teacherName) ? arg.teacherName : undefined;
+        const className = (typeof arg === 'object' && arg?.className) ? arg.className : undefined;
+
         if (!lockManager) lockManager = new LockManager();
-        lockManager.lockScreen(timeout);
+        lockManager.lockScreen(timeout, teacherName, className);
     }
 });
 
@@ -204,13 +207,13 @@ ipcMain.on(CHANNELS.START_STUDENT, (event) => {
     console.log('Student Service Started: Discovery Active');
 });
 
-ipcMain.on(CHANNELS.CONNECT_TO_CLASS, (event, { ip, port, studentInfo, password }) => {
+ipcMain.on(CHANNELS.CONNECT_TO_CLASS, (event, { ip, port, studentInfo, password, teacherName, className }) => {
     if (!studentService) {
         console.error('Error: studentService is null!');
         return;
     }
     studentService.updateWebContents(event.sender);
-    studentService.connectToClass(ip, port, studentInfo, password);
+    studentService.connectToClass(ip, port, studentInfo, password, { teacherName, className });
 });
 
 // Internal IPC for Locking (triggered by Network Service)

@@ -23,12 +23,12 @@ export class LockManager {
      * Locks the screen by creating a covering window and blocking shortcuts.
      * @param timeoutMinutes Optional dynamic timeout from the teacher.
      */
-    public lockScreen(timeoutMinutes?: number) {
+    public lockScreen(timeoutMinutes?: number, teacherName?: string, className?: string) {
         if (this.isLocked) return;
         this.isLocked = true;
 
         // 1. Create Lock Window if not exists
-        this.createLockWindow(timeoutMinutes);
+        this.createLockWindow(timeoutMinutes, teacherName, className);
 
         // 2. Register Shortcuts to block
         this.blockInputs();
@@ -71,7 +71,6 @@ export class LockManager {
         const shortcutsToBlock = [
             'Alt+Tab',
             'Alt+F4',
-            'Super', // Windows Key
             'CommandOrControl+Escape',
             'Alt+Space',
             'F11',
@@ -100,11 +99,10 @@ export class LockManager {
     private unblockInputs() {
         globalShortcut.unregisterAll();
     }
-
     /**
      * Creates the overlay window that physically blocks the screen.
      */
-    private createLockWindow(timeoutMinutes?: number) {
+    private createLockWindow(timeoutMinutes?: number, teacherName?: string, className?: string) {
         const displays = screen.getAllDisplays();
         // In a multi-monitor setup, we currently cover the primary display.
         // Electron Kiosk mode usually handles the main screen.
@@ -121,6 +119,9 @@ export class LockManager {
                 contextIsolation: false // For simple locking HTML
             }
         });
+
+        const safeTeacher = teacherName || '';
+        const safeClass = className || '';
 
         // We use a generated HTML string to render the lock screen
         // This avoids needing a separate HTML file for the lock view.
@@ -141,12 +142,14 @@ export class LockManager {
               margin: 0; 
               font-family: 'Segoe UI', sans-serif;
             }
-            .message { font-size: 5vw; margin-bottom: 20px; }
-            .timer { font-size: 2vw; color: #ccc; }
+            .message { font-size: 5vw; margin-bottom: 20px; font-weight: bold; }
+            .details { font-size: 2.5vw; margin-bottom: 40px; color: #aaa; text-align: center; }
+            .timer { font-size: 2vw; color: #555; margin-top: 20px; }
           </style>
         </head>
         <body>
           <div class="message">👩‍🏫 עיניים אל המורה</div>
+          ${safeTeacher ? `<div class="details">${safeTeacher} ${safeClass ? ' • ' + safeClass : ''}</div>` : ''}
           <div class="timer" id="timer"></div>
           <script>
             const { ipcRenderer } = require('electron');
