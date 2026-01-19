@@ -200,7 +200,9 @@ const App = () => {
             ip: cls.ip,
             port: cls.port,
             studentInfo: { name: studentName, grade: studentGrade },
-            password
+            password,
+            teacherName: cls.teacher,
+            className: cls.class
         });
         setConnectedTeacher(cls.teacher);
         setConnectedClassName(cls.class);

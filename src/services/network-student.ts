@@ -130,11 +130,12 @@ export class StudentNetworkService {
 
         // --- Handle Unlock Signal ---
         this.socket.on(CHANNELS.UNLOCK_STUDENT, () => {
+            console.log('Received UNLOCK_STUDENT from teacher');
             if (this.unlockTimer) {
                 clearTimeout(this.unlockTimer);
                 this.unlockTimer = null;
             }
-            ipcMain.emit(CHANNELS.UNLOCK_STUDENT); // Internal signal to LockManager
+            ipcMain.emit(CHANNELS.UNLOCK_STUDENT, undefined); // Internal signal to LockManager
         });
 
         this.socket.on(CHANNELS.KICK_STUDENT, () => {
