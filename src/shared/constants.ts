@@ -58,7 +58,7 @@ export const UI_STRINGS = {
         incorrectPassword: 'סיסמה שגויה',
         connect: 'התחבר',
         scanning: 'מחפש כיתות...',
-        connectedTo: 'מחובר ל',
+        connectedTo: 'מחובר אל',
         waitingForTeacher: 'ממתין להוראות מהמורה...',
         screenLocked: 'עיניים אל המורה',
         disconnectedByTeacher: 'התנתקת מהשיעור על ידי המורה',

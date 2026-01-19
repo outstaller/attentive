@@ -109,10 +109,12 @@ const App = () => {
 
         const handleStatusUpdate = (e: any, status: any, msg: any) => {
             if (status === 'error') {
-                if (msg.includes('timeout') || msg.includes('xhr poll error')) {
-                    alert('החיבור לכיתה נכשל. ייתכן שהכיתה אינה זמינה כעת.');
-                }
-                setErrorMessage(msg === 'Invalid password' ? UI_STRINGS.student.incorrectPassword : msg);
+                // Removed alert - just show in UI
+                setErrorMessage(msg === 'Invalid password' ? UI_STRINGS.student.incorrectPassword : 'החיבור לכיתה נכשל.');
+            } else if (status === 'connection_lost') {
+                setConnectedStatus('disconnected');
+                setErrorMessage('החיבור לכיתה הופסק.');
+                setConnectedTeacher('');
             } else {
                 setConnectedStatus(status);
                 if (status === 'connected') {

@@ -112,9 +112,15 @@ export class StudentNetworkService {
             this.wasKicked = true;
         });
 
-        this.socket.on('disconnect', () => {
-            console.log('Disconnected from teacher');
+        this.socket.on('disconnect', (reason) => {
+            console.log('Disconnected from teacher:', reason);
             ipcMain.emit(CHANNELS.UNLOCK_STUDENT); // Safety unlock
+
+            // Prevent auto-reconnection attempts since we want to return to discovery
+            // This stops the 'connect_error' loop when teacher closes app
+            if (reason === 'io server disconnect' || reason === 'transport close') {
+                this.socket?.disconnect();
+            }
 
             if (this.wasKicked) {
                 if (!this.mainWindow.isDestroyed()) {
@@ -122,7 +128,8 @@ export class StudentNetworkService {
                 }
             } else {
                 if (!this.mainWindow.isDestroyed()) {
-                    this.mainWindow.send(CHANNELS.STUDENT_STATUS_UPDATE, 'disconnected');
+                    // Send 'connection_lost' so UI can decide whether to show a message or just reset
+                    this.mainWindow.send(CHANNELS.STUDENT_STATUS_UPDATE, 'connection_lost');
                 }
                 this.startDiscovery(); // Resume searching
             }
