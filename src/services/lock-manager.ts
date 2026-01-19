@@ -44,14 +44,20 @@ export class LockManager {
     public unlockScreen() {
         console.log('LockManager.unlockScreen called. isLocked:', this.isLocked);
         if (!this.isLocked) return;
-        this.isLocked = false;
+        this.isLocked = false; // Disable flag to allow closing
 
         // 1. Close Window
-        if (this.lockWindow && !this.lockWindow.isDestroyed()) {
-            console.log('Closing lock window');
-            this.lockWindow.close();
-        } else {
-            console.log('Lock window is null or destroyed');
+        try {
+            if (this.lockWindow && !this.lockWindow.isDestroyed()) {
+                console.log('Attempting to destroy lock window');
+                this.lockWindow.setAlwaysOnTop(false);
+                this.lockWindow.destroy(); // Force close
+                console.log('Lock window destroyed');
+            } else {
+                console.log('Lock window is null or destroyed already');
+            }
+        } catch (error) {
+            console.error('Error destroying lock window:', error);
         }
         this.lockWindow = null;
 
