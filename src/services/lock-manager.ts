@@ -149,6 +149,7 @@ export class LockManager {
           <div class="message">👩‍🏫 עיניים אל המורה</div>
           <div class="timer" id="timer"></div>
           <script>
+            const { ipcRenderer } = require('electron');
             let duration = ${durationMs};
             const endTime = Date.now() + duration;
             
@@ -156,6 +157,8 @@ export class LockManager {
               const remaining = endTime - Date.now();
               if (remaining <= 0) {
                  document.getElementById('timer').innerText = "משחרר...";
+                 // Force unlock from client side
+                 ipcRenderer.send('${CHANNELS.UNLOCK_STUDENT}');
               } else {
                  const minutes = Math.floor(remaining / 60000);
                  const seconds = Math.floor((remaining % 60000) / 1000);
