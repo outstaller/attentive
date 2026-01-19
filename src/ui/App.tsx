@@ -28,6 +28,7 @@ const App = () => {
     const [connectedStatus, setConnectedStatus] = useState<'disconnected' | 'connected' | 'kicked'>('disconnected');
     const [connectedTeacher, setConnectedTeacher] = useState<string>('');
     const [teacherPassword, setTeacherPassword] = useState('');
+    const [lockTimeout, setLockTimeout] = useState('60');
     const [passwordPromptClass, setPasswordPromptClass] = useState<BeaconPacket | null>(null);
     const [inputPassword, setInputPassword] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
@@ -44,6 +45,8 @@ const App = () => {
             if (sName) setStudentName(sName);
             const sGrade = await ipcRenderer.invoke(CHANNELS.STORE_GET, 'studentGrade');
             if (sGrade) setStudentGrade(sGrade);
+            const lTimeout = await ipcRenderer.invoke(CHANNELS.STORE_GET, 'lockTimeout');
+            if (lTimeout) setLockTimeout(lTimeout);
 
             // Check for enforced mode
             const enforcedMode = await ipcRenderer.invoke(CHANNELS.APP_MODE);
@@ -148,7 +151,12 @@ const App = () => {
             return;
         }
         setErrorMessage('');
-        ipcRenderer.send(CHANNELS.START_TEACHER, { name: teacherName, className, password: teacherPassword });
+        ipcRenderer.send(CHANNELS.START_TEACHER, {
+            name: teacherName,
+            className,
+            password: teacherPassword,
+            lockTimeout: parseInt(lockTimeout) || 60
+        });
         setIsClassStarted(true);
     };
 
@@ -324,6 +332,16 @@ const App = () => {
                             type="password"
                             onChange={e => setTeacherPassword(e.target.value)}
                         />
+                        <div style={{ marginTop: 10 }}>
+                            <label style={{ marginRight: 10, fontSize: 14 }}>זמן נעילה מקסימלי (דקות):</label>
+                            <input
+                                style={{ ...styles.input, width: 80 }}
+                                type="number"
+                                min="1"
+                                value={lockTimeout}
+                                onChange={e => { setLockTimeout(e.target.value); saveSetting('lockTimeout', e.target.value); }}
+                            />
+                        </div>
                         {errorMessage && <p style={{ color: 'red', marginTop: 5 }}>{errorMessage}</p>}
                         <button type="submit" style={styles.primaryButton}>{UI_STRINGS.teacher.startClass}</button>
                     </form>

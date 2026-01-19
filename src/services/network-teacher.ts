@@ -17,6 +17,9 @@ export class TeacherNetworkService {
     private socketToStudentId: Map<string, string> = new Map(); // SocketID -> UniqueID
     private isClassLocked: boolean = false;
     private mainWindow: WebContents;
+    private lockTimeout: number = 60; // Minutes
+    private classLockTimer: NodeJS.Timeout | null = null;
+    private studentLockTimers: Map<string, NodeJS.Timeout> = new Map(); // UniqueID -> Timer
 
     private log(message: string, type: 'info' | 'warning' | 'error' = 'info') {
         if (!this.mainWindow.isDestroyed()) {
@@ -35,15 +38,21 @@ export class TeacherNetworkService {
         this.mainWindow = webContents;
     }
 
-    public async start(className: string, teacherName: string, password?: string) {
+    public async start(className: string, teacherName: string, password?: string, lockTimeout?: number) {
         this.password = password || '';
+        this.lockTimeout = lockTimeout || 60;
         this.currentSessionId = crypto.randomUUID();
         this.startUDPServer(className, teacherName);
         this.startSocketServer();
+        this.log(`הכיתה נפתחה (זמן נעילה אוטומטי: ${this.lockTimeout} דקות)`, 'info');
     }
 
     public stop() {
         if (this.beaconTimer) clearInterval(this.beaconTimer);
+        if (this.classLockTimer) clearTimeout(this.classLockTimer);
+        this.studentLockTimers.forEach(timer => clearTimeout(timer));
+        this.studentLockTimers.clear();
+
         if (this.udpSocket) this.udpSocket.close();
         if (this.io) this.io.close();
         if (this.httpServer) this.httpServer.close();
@@ -154,7 +163,7 @@ export class TeacherNetworkService {
 
                 // Sync lock state
                 if (this.isClassLocked) {
-                    socket.emit(CHANNELS.LOCK_STUDENT);
+                    socket.emit(CHANNELS.LOCK_STUDENT, { timeout: this.lockTimeout });
                 }
             });
 
@@ -187,13 +196,25 @@ export class TeacherNetworkService {
 
     public lockAll() {
         this.isClassLocked = true;
-        this.io?.emit(CHANNELS.LOCK_STUDENT);
+        this.io?.emit(CHANNELS.LOCK_STUDENT, { timeout: this.lockTimeout });
         this.updateAllStatuses('locked');
         this.log('הכיתה ננעלה', 'warning');
+
+        // Schedule Unlock
+        if (this.classLockTimer) clearTimeout(this.classLockTimer);
+        this.classLockTimer = setTimeout(() => {
+            this.unlockAll();
+            this.log(`הכיתה שוחררה אוטומטית (עבר זמן ${this.lockTimeout} דקות)`, 'info');
+        }, this.lockTimeout * 60 * 1000);
     }
 
     public unlockAll() {
         this.isClassLocked = false;
+        if (this.classLockTimer) {
+            clearTimeout(this.classLockTimer);
+            this.classLockTimer = null;
+        }
+
         this.io?.emit(CHANNELS.UNLOCK_STUDENT);
         this.updateAllStatuses('active');
         this.log('הכיתה שוחררה', 'info');
@@ -201,18 +222,38 @@ export class TeacherNetworkService {
 
     public lockStudent(uniqueId: string) {
         const student = this.students.get(uniqueId);
-        if (student && student.socketId) {
-            this.io?.to(student.socketId).emit(CHANNELS.LOCK_STUDENT);
+        if (student) {
+            if (student.socketId) {
+                this.io?.to(student.socketId).emit(CHANNELS.LOCK_STUDENT, { timeout: this.lockTimeout });
+            }
             this.updateStudentStatus(uniqueId, 'locked');
             this.log(`תלמיד ננעל: ${student.name}`, 'warning');
+
+            // Schedule Unlock
+            if (this.studentLockTimers.has(uniqueId)) clearTimeout(this.studentLockTimers.get(uniqueId)!);
+            const timer = setTimeout(() => {
+                this.unlockStudent(uniqueId);
+                this.log(`תלמיד שוחרר אוטומטית: ${student.name}`, 'info');
+                this.studentLockTimers.delete(uniqueId);
+            }, this.lockTimeout * 60 * 1000);
+            this.studentLockTimers.set(uniqueId, timer);
         }
     }
 
     public unlockStudent(uniqueId: string) {
         const student = this.students.get(uniqueId);
-        if (student && student.socketId) {
-            this.io?.to(student.socketId).emit(CHANNELS.UNLOCK_STUDENT);
+        if (student) {
+            if (student.socketId) {
+                this.io?.to(student.socketId).emit(CHANNELS.UNLOCK_STUDENT);
+            }
             this.updateStudentStatus(uniqueId, 'active');
+
+            // Clear Timer
+            if (this.studentLockTimers.has(uniqueId)) {
+                clearTimeout(this.studentLockTimers.get(uniqueId)!);
+                this.studentLockTimers.delete(uniqueId);
+            }
+
             this.log(`תלמיד שוחרר: ${student.name}`, 'info');
         }
     }

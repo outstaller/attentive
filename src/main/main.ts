@@ -84,7 +84,7 @@ ipcMain.on(CHANNELS.STORE_SET, (event, key, val) => {
 });
 
 // Teacher Mode handlers
-ipcMain.on(CHANNELS.START_TEACHER, (event, { name, className, password }) => {
+ipcMain.on(CHANNELS.START_TEACHER, (event, { name, className, password, lockTimeout }) => {
     if (!mainWindow) return;
     if (studentService) {
         studentService.stop();
@@ -94,7 +94,7 @@ ipcMain.on(CHANNELS.START_TEACHER, (event, { name, className, password }) => {
         teacherService.stop();
     }
     teacherService = new TeacherNetworkService(mainWindow.webContents);
-    teacherService.start(className, name, password);
+    teacherService.start(className, name, password, lockTimeout);
     console.log(`Teacher Service Started for ${name} - ${className}`);
 });
 

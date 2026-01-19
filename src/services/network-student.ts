@@ -10,6 +10,7 @@ export class StudentNetworkService {
     private mainWindow: WebContents;
     private connectedClass: { ip: string; port: number } | null = null;
     private wasKicked: boolean = false;
+    private unlockTimer: NodeJS.Timeout | null = null;
 
     constructor(webContents: WebContents) {
         this.mainWindow = webContents;
@@ -21,6 +22,29 @@ export class StudentNetworkService {
 
     public startDiscovery() {
         this.udpSocket = dgram.createSocket('udp4');
+        // ... (omitting unchanged discovery logic) ...
+        this.socket.on(CHANNELS.LOCK_STUDENT, (data?: { timeout?: number }) => {
+            ipcMain.emit(CHANNELS.LOCK_STUDENT); // Internal signal to LockManager
+
+            if (this.unlockTimer) clearTimeout(this.unlockTimer);
+
+            if (data?.timeout) {
+                console.log(`Student locked. Auto-unlock in ${data.timeout} minutes.`);
+                this.unlockTimer = setTimeout(() => {
+                    console.log('Auto-unlock timer fired.');
+                    ipcMain.emit(CHANNELS.UNLOCK_STUDENT);
+                    this.unlockTimer = null;
+                }, data.timeout * 60 * 1000);
+            }
+        });
+
+        this.socket.on(CHANNELS.UNLOCK_STUDENT, () => {
+            if (this.unlockTimer) {
+                clearTimeout(this.unlockTimer);
+                this.unlockTimer = null;
+            }
+            ipcMain.emit(CHANNELS.UNLOCK_STUDENT); // Internal signal to LockManager
+        });
 
         this.udpSocket.on('message', (msg, rinfo) => {
             try {
@@ -81,11 +105,26 @@ export class StudentNetworkService {
             this.stopDiscovery(); // Stop listening once connected
         });
 
-        this.socket.on(CHANNELS.LOCK_STUDENT, () => {
+        this.socket.on(CHANNELS.LOCK_STUDENT, (data?: { timeout?: number }) => {
             ipcMain.emit(CHANNELS.LOCK_STUDENT); // Internal signal to LockManager
+
+            if (this.unlockTimer) clearTimeout(this.unlockTimer);
+
+            if (data?.timeout) {
+                console.log(`Student locked. Auto-unlock in ${data.timeout} minutes.`);
+                this.unlockTimer = setTimeout(() => {
+                    console.log('Auto-unlock timer fired.');
+                    ipcMain.emit(CHANNELS.UNLOCK_STUDENT);
+                    this.unlockTimer = null;
+                }, data.timeout * 60 * 1000);
+            }
         });
 
         this.socket.on(CHANNELS.UNLOCK_STUDENT, () => {
+            if (this.unlockTimer) {
+                clearTimeout(this.unlockTimer);
+                this.unlockTimer = null;
+            }
             ipcMain.emit(CHANNELS.UNLOCK_STUDENT); // Internal signal to LockManager
         });
 
