@@ -27,6 +27,7 @@ const App = () => {
     const [discoveredClasses, setDiscoveredClasses] = useState<BeaconPacket[]>([]);
     const [connectedStatus, setConnectedStatus] = useState<'disconnected' | 'connected' | 'kicked'>('disconnected');
     const [connectedTeacher, setConnectedTeacher] = useState<string>('');
+    const [connectedClassName, setConnectedClassName] = useState<string>('');
     const [teacherPassword, setTeacherPassword] = useState('');
     const [lockTimeout, setLockTimeout] = useState('60');
     const [passwordPromptClass, setPasswordPromptClass] = useState<BeaconPacket | null>(null);
@@ -200,6 +201,7 @@ const App = () => {
             password
         });
         setConnectedTeacher(cls.teacher);
+        setConnectedClassName(cls.class);
     };
 
     const lockAll = () => ipcRenderer.send(CHANNELS.LOCK_ALL);
@@ -437,6 +439,7 @@ const App = () => {
                     <div style={styles.successMessage}>
                         <h1>✅</h1>
                         <h2>{UI_STRINGS.student.connectedTo} {connectedTeacher}</h2>
+                        <h3 style={{ marginTop: 0, fontWeight: 'normal' }}>{connectedClassName}</h3>
                         <p>{UI_STRINGS.student.waitingForTeacher}</p>
                         <p style={{ marginTop: 20, fontSize: '0.8em', color: '#666', maxWidth: 400 }}>
                             {UI_STRINGS.student.privacyDisclaimer}
