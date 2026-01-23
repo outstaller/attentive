@@ -42,6 +42,17 @@ const createWindow = () => {
     // Load the React application
     mainWindow.loadFile(path.join(__dirname, '../ui/index.html'));
 
+    mainWindow.on('close', (e) => {
+        if (teacherService) {
+            e.preventDefault(); // Stop close
+            console.log('Graceful shutdown initiated...');
+            teacherService.shutdown().finally(() => {
+                teacherService = null; // Prevent infinite loop
+                mainWindow?.close(); // Re-trigger close
+            });
+        }
+    });
+
     mainWindow.on('closed', () => {
         mainWindow = null;
     });
@@ -129,8 +140,8 @@ ipcMain.on(CHANNELS.STORE_SET, (event, key, val) => {
 });
 
 // --- Teacher Mode Handlers ---
-ipcMain.on(CHANNELS.START_TEACHER, (event, { name, className, password, lockTimeout }) => {
-    if (!mainWindow) return;
+ipcMain.handle(CHANNELS.START_TEACHER, async (event, { name, className, password, lockTimeout }) => {
+    if (!mainWindow) return { success: false, error: 'Internal Error' };
 
     // Cleanup any existing services to ensure clean state
     if (studentService) {
@@ -143,8 +154,15 @@ ipcMain.on(CHANNELS.START_TEACHER, (event, { name, className, password, lockTime
 
     // Initialize Teacher Service
     teacherService = new TeacherNetworkService(mainWindow.webContents);
-    teacherService.start(className, name, password, lockTimeout);
-    console.log(`Teacher Service Started for ${name} - ${className}`);
+
+    try {
+        await teacherService.start(className, name, password, lockTimeout);
+        console.log(`Teacher Service Started for ${name} - ${className}`);
+        return { success: true };
+    } catch (err: any) {
+        console.error('Failed to start teacher service:', err);
+        return { success: false, error: err.message || 'Connection Failed' };
+    }
 });
 
 ipcMain.on(CHANNELS.STOP_TEACHER, () => {
@@ -207,13 +225,14 @@ ipcMain.on(CHANNELS.START_STUDENT, (event) => {
     console.log('Student Service Started: Discovery Active');
 });
 
-ipcMain.on(CHANNELS.CONNECT_TO_CLASS, (event, { ip, port, studentInfo, password, teacherName, className }) => {
+ipcMain.on(CHANNELS.CONNECT_TO_CLASS, (event, { ip, port, studentInfo, password, teacherName, className, relayId }) => {
     if (!studentService) {
         console.error('Error: studentService is null!');
         return;
     }
     studentService.updateWebContents(event.sender);
-    studentService.connectToClass(ip, port, studentInfo, password, { teacherName, className });
+    // relayId is passed inside the teacherInfo object (last arg)
+    studentService.connectToClass(ip, port, studentInfo, password, { teacherName, className, relayId });
 });
 
 // Internal IPC for Locking (triggered by Network Service)

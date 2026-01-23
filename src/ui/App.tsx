@@ -148,19 +148,35 @@ const App = () => {
         };
     }, []);
 
-    const startTeacher = () => {
+    const [isLoading, setIsLoading] = useState(false);
+
+    const startTeacher = async () => {
         if (!teacherName.trim() || !className.trim()) {
             setErrorMessage('נא למלא את כל שדות החובה');
             return;
         }
         setErrorMessage('');
-        ipcRenderer.send(CHANNELS.START_TEACHER, {
-            name: teacherName,
-            className,
-            password: teacherPassword,
-            lockTimeout: parseInt(lockTimeout) || 60
-        });
-        setIsClassStarted(true);
+        setIsLoading(true);
+
+        try {
+            const result = await ipcRenderer.invoke(CHANNELS.START_TEACHER, {
+                name: teacherName,
+                className,
+                password: teacherPassword,
+                lockTimeout: parseInt(lockTimeout) || 60
+            });
+
+            if (result.success) {
+                setIsClassStarted(true);
+            } else {
+                setErrorMessage(result.error || 'שגיאה בפתיחת כיתה');
+            }
+        } catch (err) {
+            setErrorMessage('שגיאה בתקשורת עם המערכת');
+            console.error(err);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const stopTeacher = () => {
@@ -202,7 +218,8 @@ const App = () => {
             studentInfo: { name: studentName, grade: studentGrade },
             password,
             teacherName: cls.teacher,
-            className: cls.class
+            className: cls.class,
+            relayId: cls.relayId
         });
         setConnectedTeacher(cls.teacher);
         setConnectedClassName(cls.class);
@@ -340,7 +357,13 @@ const App = () => {
                             />
                         </div>
                         {errorMessage && <p style={{ color: 'red', marginTop: 5 }}>{errorMessage}</p>}
-                        <button type="submit" style={styles.primaryButton}>{UI_STRINGS.teacher.startClass}</button>
+                        <button
+                            type="submit"
+                            style={{ ...styles.primaryButton, opacity: isLoading ? 0.7 : 1, cursor: isLoading ? 'wait' : 'pointer' }}
+                            disabled={isLoading}
+                        >
+                            {isLoading ? 'מתחבר לשרת...' : UI_STRINGS.teacher.startClass}
+                        </button>
                     </form>
                 ) : (
                     <>

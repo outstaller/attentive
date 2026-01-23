@@ -2,8 +2,8 @@
 // Student Network Service
 // ============================================================================
 // Handles the client-side logic for the Student mode:
-// 1. Listens for UDP beacons to find classes.
-// 2. Connects to the Teacher via Socket.io.
+// 1. LAN: Listens for UDP beacons. Connects directly to Teacher IP.
+// 2. INTERNET: Connects to Relay. Fetches Class List. Connects via Relay.
 // 3. Handles Lock/Unlock signals and manages the local auto-unlock timer.
 
 import dgram from 'dgram';
@@ -11,15 +11,24 @@ import { io, Socket } from 'socket.io-client';
 import { ipcMain, WebContents } from 'electron';
 import { UDP_PORT, CHANNELS } from '../shared/constants';
 import { PacketType, BeaconPacket } from '../shared/types';
+import { ConfigManager } from '../shared/config';
 
 export class StudentNetworkService {
+    // LAN Objects
     private udpSocket: dgram.Socket | null = null;
-    private socket: Socket | null = null;
+
+    // Remote / Common Objects
+    private socket: Socket | null = null; // Used for both LAN (direct) and Internet (Relay)
+
     private mainWindow: WebContents;
     private connectedClass: { ip: string; port: number } | null = null;
     private wasKicked: boolean = false;
     // Timer to auto-unlock if the teacher disappears or app crashes
     private unlockTimer: NodeJS.Timeout | null = null;
+
+    // Config
+    private config = ConfigManager.getInstance().getConfig();
+    private discoveryTimer: NodeJS.Timeout | null = null;
 
     constructor(webContents: WebContents) {
         this.mainWindow = webContents;
@@ -29,21 +38,38 @@ export class StudentNetworkService {
         this.mainWindow = webContents;
     }
 
-    /**
-     * Starts listening for UDP broadcasts from teachers.
-     * Packets found are sent to the UI.
-     */
     public startDiscovery() {
+        this.config = ConfigManager.getInstance().getConfig(); // Refresh config
+
+        if (this.config.mode === 'LAN') {
+            this.startLanDiscovery();
+        } else {
+            this.startInternetDiscovery();
+        }
+    }
+
+    public stopDiscovery() {
+        if (this.udpSocket) {
+            this.udpSocket.close();
+            this.udpSocket = null;
+        }
+        if (this.discoveryTimer) {
+            clearInterval(this.discoveryTimer);
+            this.discoveryTimer = null;
+        }
+    }
+
+    // =========================================================================
+    // LAN Discovery
+    // =========================================================================
+
+    private startLanDiscovery() {
         this.udpSocket = dgram.createSocket('udp4');
-        // ... (omitting unchanged discovery logic) ...
-
-
         this.udpSocket.on('message', (msg, rinfo) => {
             try {
                 const packet = JSON.parse(msg.toString()) as BeaconPacket;
                 if (packet.type === PacketType.BEACON) {
-                    // Always prefer the actual Sender IP (rinfo.address) over the claimed IP in the packet
-                    // This solves issues where multi-homed teachers broadcast unreachable IPs via reachable interfaces
+                    // Always prefer the actual Sender IP (rinfo.address)
                     packet.ip = rinfo.address;
 
                     // Send found class to UI
@@ -62,21 +88,69 @@ export class StudentNetworkService {
         });
     }
 
-    /**
-     * Stops listening for UDP broadcasts.
-     */
-    public stopDiscovery() {
-        if (this.udpSocket) {
-            this.udpSocket.close();
-            this.udpSocket = null;
+    // =========================================================================
+    // Internet Discovery (Relay)
+    // =========================================================================
+
+    private startInternetDiscovery() {
+        // In Internet mode, we connect to the Relay to fetch classes.
+        // If we are not already connected to relay, connect now.
+        if (!this.socket || !this.socket.connected) {
+            this.socket = io(this.config.relayUrl, {
+                transports: ['websocket'],
+                reconnectionAttempts: 5
+            });
+        }
+
+        // Poll for classes every 5 seconds
+        const fetchClasses = () => {
+            if (this.socket && this.socket.connected) {
+                this.socket.emit('get_classes', (classes: any[]) => {
+                    classes.forEach(c => {
+                        // Map Relay Teacher Data to BeaconPacket
+                        const packet: BeaconPacket = {
+                            type: PacketType.BEACON,
+                            teacher: c.name,
+                            class: c.className,
+                            ip: 'RELAY', // Special flag handled by connect logic
+                            port: 0,
+                            isSecured: c.isSecured,
+                            sessionId: c.sessionId,
+                            relayId: c.socketId // Teacher's Socket ID on Relay
+                        };
+
+                        if (!this.mainWindow.isDestroyed()) {
+                            this.mainWindow.send(CHANNELS.TEACHER_BEACON, packet);
+                        }
+                    });
+                });
+            }
+        };
+
+        this.socket.on('connect', () => {
+            console.log('Connected to Relay for Discovery');
+            fetchClasses();
+        });
+
+        this.discoveryTimer = setInterval(fetchClasses, 5000);
+    }
+
+    // =========================================================================
+    // Connection Logic
+    // =========================================================================
+
+    public connectToClass(ip: string, port: number, info: { name: string; grade: string }, password?: string, teacherInfo?: { teacherName: string; className: string, relayId?: string }) {
+        // If we were polling in Internet mode, stop polling but keep socket if it's the relay one
+        this.stopDiscovery();
+
+        if (this.config.mode === 'LAN') {
+            this.connectLan(ip, port, info, password, teacherInfo);
+        } else {
+            this.connectInternet(teacherInfo?.relayId || '', info, password, teacherInfo);
         }
     }
 
-    /**
-     * Connects to a selected class via Socket.IO.
-     * Handles authentication and sets up lock listeners.
-     */
-    public connectToClass(ip: string, port: number, info: { name: string; grade: string }, password?: string, teacherInfo?: { teacherName: string; className: string }) {
+    private connectLan(ip: string, port: number, info: { name: string; grade: string }, password?: string, teacherInfo?: any) {
         if (this.socket) this.socket.disconnect();
 
         this.connectedClass = { ip, port };
@@ -87,6 +161,62 @@ export class StudentNetworkService {
             forceNew: true
         });
 
+        this.setupSocketHandlers(teacherInfo);
+
+        this.socket.on('connect', () => { // LAN Connect
+            console.log('LAN Socket connected!');
+            if (!this.mainWindow.isDestroyed()) {
+                this.mainWindow.send(CHANNELS.STUDENT_STATUS_UPDATE, 'connected');
+            }
+            this.wasKicked = false;
+            this.socket?.emit(CHANNELS.SET_USER_INFO, info);
+        });
+    }
+
+    private connectInternet(teacherRelayId: string, info: { name: string; grade: string }, password?: string, teacherInfo?: any) {
+        // We reuse the existing socket if it's connected to Relay
+        if (!this.socket || !this.socket.connected) {
+            this.socket = io(this.config.relayUrl);
+        }
+
+        // We need to setup handlers before joining?
+        // Actually, we might have set them up during discovery? No, discovery didn't attach lock listeners.
+        // We need to attach listeners now.
+        // BEWARE: If we re-attach listeners on the same socket multiple times, we get duplicates.
+        // Ideally we wipe listeners first.
+        this.socket.removeAllListeners();
+
+        // Handle basic connect (if we just created it)
+        // If already connected, this won't fire immediately?
+        if (this.socket.connected) {
+            this.performRelayJoin(teacherRelayId, info, password);
+        } else {
+            this.socket.on('connect', () => {
+                this.performRelayJoin(teacherRelayId, info, password);
+            });
+        }
+
+        this.setupSocketHandlers(teacherInfo);
+    }
+
+    private performRelayJoin(teacherRelayId: string, info: { name: string; grade: string }, password?: string) {
+        console.log('Joining class via Relay:', teacherRelayId);
+        this.socket?.emit('join_class', {
+            teacherSocketId: teacherRelayId,
+            studentInfo: { ...info, password }
+        });
+
+        // We assume success for now, or wait for 'student_joined' conf?
+        // Let's assume connected state upon sending join
+        if (!this.mainWindow.isDestroyed()) {
+            this.mainWindow.send(CHANNELS.STUDENT_STATUS_UPDATE, 'connected');
+        }
+        this.wasKicked = false;
+    }
+
+    private setupSocketHandlers(teacherInfo?: { teacherName: string; className: string }) {
+        if (!this.socket) return;
+
         this.socket.on('connect_error', (err) => {
             console.error('Socket connect_error:', err.message);
             if (!this.mainWindow.isDestroyed()) {
@@ -94,20 +224,7 @@ export class StudentNetworkService {
             }
         });
 
-        this.socket.on('connect', () => {
-            console.log('Socket connected! ID:', this.socket?.id);
-            if (!this.mainWindow.isDestroyed()) {
-                this.mainWindow.send(CHANNELS.STUDENT_STATUS_UPDATE, 'connected');
-            }
-            this.wasKicked = false;
-            this.socket?.emit(CHANNELS.SET_USER_INFO, info);
-            this.stopDiscovery(); // Stop listening once connected
-        });
-
-        // --- Handle Lock Signal ---
-        this.socket.on(CHANNELS.LOCK_STUDENT, (data?: { timeout?: number }) => {
-            // Internal signal to LockManager - PASS THE DATA
-            // Augment data with teacher info for display
+        const handleLock = (data: any) => {
             const lockData = {
                 ...data,
                 teacherName: teacherInfo?.teacherName,
@@ -115,41 +232,60 @@ export class StudentNetworkService {
             };
             ipcMain.emit(CHANNELS.LOCK_STUDENT, undefined, lockData);
 
-            // Set local auto-unlock timer
             if (this.unlockTimer) clearTimeout(this.unlockTimer);
-
             if (data?.timeout) {
-                console.log(`Student locked. Auto-unlock in ${data.timeout} minutes.`);
                 this.unlockTimer = setTimeout(() => {
-                    console.log('Auto-unlock timer fired.');
                     ipcMain.emit(CHANNELS.UNLOCK_STUDENT);
                     this.unlockTimer = null;
                 }, data.timeout * 60 * 1000);
             }
-        });
+        };
 
-        // --- Handle Unlock Signal ---
-        this.socket.on(CHANNELS.UNLOCK_STUDENT, () => {
-            console.log('Received UNLOCK_STUDENT from teacher');
+        const handleUnlock = () => {
             if (this.unlockTimer) {
                 clearTimeout(this.unlockTimer);
                 this.unlockTimer = null;
             }
-            ipcMain.emit(CHANNELS.UNLOCK_STUDENT, undefined); // Internal signal to LockManager
-        });
+            ipcMain.emit(CHANNELS.UNLOCK_STUDENT, undefined);
+        };
 
-        this.socket.on(CHANNELS.KICK_STUDENT, () => {
+        const handleKick = () => {
             this.wasKicked = true;
+            // Force disconnection logic
+            console.log('Received kick signal from teacher.');
+
+            // If we are in Relay mode, we are connected to the relay, not the teacher directly.
+            // But we treat 'kick' as being removed from the class context.
+            // We should stop listening to class events or disconnect entirely.
+
+            // For consistent UX with LAN mode (where socket dies), we should disconnect.
+            this.disconnect();
+
+            // Notify UI immediately as disconnect event might lag or be ambiguous
+            if (!this.mainWindow.isDestroyed()) {
+                this.mainWindow.send(CHANNELS.STUDENT_STATUS_UPDATE, 'kicked');
+            }
+        };
+
+        // --- LAN Handlers ---
+        this.socket.on(CHANNELS.LOCK_STUDENT, handleLock);
+        this.socket.on(CHANNELS.UNLOCK_STUDENT, handleUnlock);
+        this.socket.on(CHANNELS.KICK_STUDENT, handleKick);
+
+        // --- Internet Handlers (Relay Wrapped) ---
+        this.socket.on('relay_message', (msg: { event: string, data: any }) => {
+            // Unwrap
+            if (msg.event === CHANNELS.LOCK_STUDENT) handleLock(msg.data);
+            if (msg.event === CHANNELS.UNLOCK_STUDENT) handleUnlock();
+            if (msg.event === CHANNELS.KICK_STUDENT) handleKick();
         });
 
         this.socket.on('disconnect', (reason) => {
-            console.log('Disconnected from teacher:', reason);
-            ipcMain.emit(CHANNELS.UNLOCK_STUDENT); // Safety unlock
+            console.log('Disconnected:', reason);
+            ipcMain.emit(CHANNELS.UNLOCK_STUDENT);
 
-            // Prevent auto-reconnection attempts since we want to return to discovery
-            // This stops the 'connect_error' loop when teacher closes app
             if (reason === 'io server disconnect' || reason === 'transport close') {
-                this.socket?.disconnect();
+                // If it was valid disconnect
             }
 
             if (this.wasKicked) {
@@ -158,10 +294,10 @@ export class StudentNetworkService {
                 }
             } else {
                 if (!this.mainWindow.isDestroyed()) {
-                    // Send 'connection_lost' so UI can decide whether to show a message or just reset
                     this.mainWindow.send(CHANNELS.STUDENT_STATUS_UPDATE, 'connection_lost');
                 }
-                this.startDiscovery(); // Resume searching
+                // Only auto-restart discovery if we are in a state that warrants it?
+                this.startDiscovery();
             }
         });
     }

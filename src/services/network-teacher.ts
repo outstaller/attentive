@@ -2,41 +2,50 @@
 // Teacher Network Service
 // ============================================================================
 // Handles the backend logic for the Teacher mode:
-// 1. Broadcasts UDP beacons so students can discover the class.
-// 2. Runs a Socket.IO server to maintain connections with students.
+// 1. LAN: Broadcasts UDP beacons, Runs Socket.IO Server.
+// 2. INTERNET: Connects to Relay Server, Registers presence.
 // 3. Manages student state (locked, active, disconnected).
 
 import dgram from 'dgram';
 import crypto from 'crypto';
 import { Server as SocketIOServer, Socket } from 'socket.io';
+import { io, Socket as ClientSocket } from 'socket.io-client';
 import http from 'http';
 import { ipcMain, WebContents } from 'electron';
 import { UDP_PORT, TCP_PORT, CHANNELS } from '../shared/constants';
 import { Student, PacketType, BeaconPacket } from '../shared/types';
+import { ConfigManager } from '../shared/config';
 import * as ip from 'ip';
 import os from 'os';
 
 export class TeacherNetworkService {
+    // LAN Objects
     private udpSocket: dgram.Socket | null = null;
     private io: SocketIOServer | null = null;
     private httpServer: http.Server | null = null;
 
-    // Timer for sending UDP beacons every 2 seconds
-    private beaconTimer: NodeJS.Timeout | null = null;
+    // Internet Objects
+    private relaySocket: ClientSocket | null = null;
 
-    // Active student tracking
+    // Common
+    private beaconTimer: NodeJS.Timeout | null = null;
     private students: Map<string, Student> = new Map(); // Mapped by UniqueID (Name+Grade)
     private socketToStudentId: Map<string, string> = new Map(); // Helper for disconnects
 
     private isClassLocked: boolean = false;
     private mainWindow: WebContents;
 
-    // Configurable Auto-Unlock Timer (default 60m)
+    // Config
     private lockTimeout: number = 60;
+    private config = ConfigManager.getInstance().getConfig();
 
-    /**
-     * Sends a log entry to the UI renderer process.
-     */
+    private password: string = '';
+    private currentSessionId: string = '';
+
+    constructor(webContents: WebContents) {
+        this.mainWindow = webContents;
+    }
+
     private log(message: string, type: 'info' | 'warning' | 'error' = 'info') {
         if (!this.mainWindow.isDestroyed()) {
             this.mainWindow.send(CHANNELS.LOG_ENTRY, {
@@ -47,56 +56,80 @@ export class TeacherNetworkService {
         }
     }
 
-    private password: string = '';
-    private currentSessionId: string = '';
-
-    constructor(webContents: WebContents) {
-        this.mainWindow = webContents;
-    }
-
-    /**
-     * initializes the Class Session.
-     * @param className The name to modify in beacons
-     * @param teacherName The teacher's display name
-     * @param password Optional password for the class
-     * @param lockTimeout Auto-unlock duration in minutes
-     */
-    public async start(className: string, teacherName: string, password?: string, lockTimeout?: number) {
+    public async start(className: string, teacherName: string, password?: string, lockTimeout?: number): Promise<void> {
         this.password = password || '';
         this.lockTimeout = lockTimeout || 60;
         this.currentSessionId = crypto.randomUUID();
 
-        // Start broadcasting existence
-        this.startUDPServer(className, teacherName);
+        // Refresh config (in case it changed)
+        this.config = ConfigManager.getInstance().getConfig();
 
-        // Start listening for connections
-        this.startSocketServer();
+        this.log(`מנסה לפתוח כיתה (מצב: ${this.config.mode})`, 'info');
 
-        this.log(`הכיתה נפתחה (זמן נעילה אוטומטי: ${this.lockTimeout} דקות)`, 'info');
+        if (this.config.mode === 'LAN') {
+            this.startLocalMode(className, teacherName);
+            this.log(`הכיתה נפתחה (מצב: ${this.config.mode}, נעילה: ${this.lockTimeout} דקות)`, 'info');
+            return Promise.resolve();
+        } else {
+            try {
+                await this.startInternetMode(className, teacherName);
+                this.log(`הכיתה נפתחה (מצב: ${this.config.mode}, נעילה: ${this.lockTimeout} דקות)`, 'info');
+            } catch (err: any) {
+                console.error('Failed to start Internet Mode:', err);
+                this.log(`שגיאה בחיבור לשרת: ${err.message}`, 'error');
+                throw err;
+            }
+        }
     }
 
-    /**
-     * Stops all network services and clears state.
-     */
+    public async shutdown(): Promise<void> {
+        if (this.students.size > 0) {
+            this.log('סוגר כיתה: מנתק את כל התלמידים...', 'warning');
+            this.kickAll();
+            // Give sockets a moment to flush the kick packet
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        this.stop();
+    }
+
     public stop() {
         if (this.beaconTimer) clearInterval(this.beaconTimer);
 
-        if (this.udpSocket) this.udpSocket.close();
-        if (this.io) this.io.close();
-        if (this.httpServer) this.httpServer.close();
+        // Stop LAN
+        if (this.udpSocket) {
+            this.udpSocket.close();
+            this.udpSocket = null;
+        }
+        if (this.io) {
+            this.io.close();
+            this.io = null;
+        }
+        if (this.httpServer) {
+            this.httpServer.close();
+            this.httpServer = null;
+        }
+
+        // Stop Internet
+        if (this.relaySocket) {
+            this.relaySocket.disconnect(); // This triggers removal on Relay Server
+            this.relaySocket = null;
+        }
 
         this.students.clear();
         this.socketToStudentId.clear();
     }
 
-    /**
-     * Sets up the UDP Broadcast mechanism.
-     * broadcast packets to port 41234 on all interfaces.
-     */
+    // =========================================================================
+    // LAN Implementation
+    // =========================================================================
+
+    private startLocalMode(className: string, teacherName: string) {
+        this.startUDPServer(className, teacherName);
+        this.startSocketServer();
+    }
+
     private startUDPServer(className: string, teacherName: string) {
         this.udpSocket = dgram.createSocket('udp4');
-
-        // Allow broadcast
         this.udpSocket.bind(() => {
             this.udpSocket?.setBroadcast(true);
             console.log('UDP Beacon started');
@@ -113,30 +146,21 @@ export class TeacherNetworkService {
             sessionId: this.currentSessionId,
         };
 
-        // Broadcast Loop (every 2 seconds)
         this.beaconTimer = setInterval(() => {
             const interfaces = os.networkInterfaces();
-
             for (const name of Object.keys(interfaces)) {
                 for (const iface of interfaces[name] || []) {
-                    // Skip internal (127.0.0.1) and non-IPv4
                     if (iface.family === 'IPv4' && !iface.internal) {
-
-                        // Calculate Broadcast Address - Fallback to .255 assumption
-                        // This allows broadcast to work on subnet x.x.x.255
                         const parts = iface.address.split('.');
                         parts[3] = '255';
                         const broadcastAddr = parts.join('.');
 
-                        // Update packet with the correct IP for this interface so student connects to right one
                         const interfacePacket = { ...packet, ip: iface.address };
                         const message = Buffer.from(JSON.stringify(interfacePacket));
 
                         this.udpSocket?.send(message, UDP_PORT, broadcastAddr, (err) => {
                             if (err) console.error(`Error sending beacon on ${name}:`, err);
                         });
-
-                        // Also try global broadcast 255.255.255.255 as fallback
                         this.udpSocket?.send(message, UDP_PORT, '255.255.255.255', () => { });
                     }
                 }
@@ -144,16 +168,12 @@ export class TeacherNetworkService {
         }, 2000);
     }
 
-    /**
-     * Sets up the TCP Socket.IO server for reliable communication.
-     */
     private startSocketServer() {
         this.httpServer = http.createServer();
         this.io = new SocketIOServer(this.httpServer, {
             cors: { origin: '*' }
         });
 
-        // Middleware for password verification
         this.io.use((socket, next) => {
             if (this.password) {
                 const handshakePassword = socket.handshake.auth.password;
@@ -165,71 +185,7 @@ export class TeacherNetworkService {
         });
 
         this.io.on('connection', (socket: Socket) => {
-            console.log('Student connected:', socket.id);
-
-            // Expect student to send their info immediately
-            socket.on(CHANNELS.SET_USER_INFO, (info: { name: string; grade: string }) => {
-                const uniqueId = `${info.name}_${info.grade}`;
-                let student = this.students.get(uniqueId);
-
-                if (student) {
-                    // Student Reconnecting (e.g., app restarted or network blip)
-                    student.socketId = socket.id;
-                    student.status = this.isClassLocked ? 'locked' : 'active';
-                    student.lastSeen = Date.now();
-                    student.connectedAt = Date.now();
-                    student.ip = socket.handshake.address;
-                } else {
-                    // New Connection
-                    student = {
-                        id: uniqueId,
-                        socketId: socket.id,
-                        name: info.name,
-                        grade: info.grade,
-                        ip: socket.handshake.address,
-                        status: this.isClassLocked ? 'locked' : 'active',
-                        lastSeen: Date.now(),
-                        connectedAt: Date.now(),
-                        totalDuration: 0
-                    };
-                }
-
-                this.students.set(uniqueId, student);
-                this.socketToStudentId.set(socket.id, uniqueId);
-
-                this.broadcastStudentList();
-
-                this.log(`תלמיד התחבר: ${info.name} (כיתה ${info.grade})`, 'info');
-
-                // If class is currently locked, lock the new student immediately
-                if (this.isClassLocked) {
-                    socket.emit(CHANNELS.LOCK_STUDENT, { timeout: this.lockTimeout });
-                }
-            });
-
-            socket.on('disconnect', () => {
-                const uniqueId = this.socketToStudentId.get(socket.id);
-                if (uniqueId) {
-                    const student = this.students.get(uniqueId);
-                    if (student) {
-                        student.status = 'disconnected';
-
-                        // Update total duration session time
-                        if (student.connectedAt) {
-                            student.totalDuration = (student.totalDuration || 0) + (Date.now() - student.connectedAt);
-                            student.connectedAt = undefined;
-                        }
-
-                        student.socketId = undefined; // Clear socket ID so we know they are gone
-                        this.log(`תלמיד התנתק: ${student.name}`, 'warning');
-                    }
-                    this.socketToStudentId.delete(socket.id);
-                } else {
-                    this.log(`חיבור התנתק (לא מזוהה): ${socket.id}`, 'warning');
-                }
-
-                this.broadcastStudentList();
-            });
+            this.handleNewStudentConnection(socket.id, socket.handshake.address, socket);
         });
 
         this.httpServer.listen(TCP_PORT, () => {
@@ -237,67 +193,253 @@ export class TeacherNetworkService {
         });
     }
 
-    /**
-     * Locks the entire class.
-     * Broadcasts the LOCK signal with the configured timeout.
-     */
+    // =========================================================================
+    // Internet Implementation (Relay)
+    // =========================================================================
+
+    private startInternetMode(className: string, teacherName: string): Promise<void> {
+        return new Promise((resolve, reject) => {
+            console.log(`Connecting to Relay: ${this.config.relayUrl}`);
+
+            this.relaySocket = io(this.config.relayUrl, {
+                reconnectionAttempts: 3,
+                timeout: 5000
+            });
+
+            // --- Setup Relay Event Listeners ---
+
+            // 1. Connection Logic
+            const connectionTimeout = setTimeout(() => {
+                // If we are still pending (not resolved/rejected by ack), we time out.
+                // We don't check .connected only, because we might be connected but waiting for Ack.
+                console.error("Registration timed out.");
+                if (this.relaySocket) this.relaySocket.disconnect();
+                reject(new Error('Connection/Registration to Relay Server timed out'));
+            }, 7000);
+
+            this.relaySocket.on('connect_error', (err) => {
+                console.error('Relay connection error:', err);
+            });
+
+            this.relaySocket.on('connect', () => {
+                console.log('Connected to Relay. Registering...');
+                this.relaySocket?.emit('register_teacher', {
+                    name: teacherName,
+                    className: className,
+                    isSecured: !!this.password
+                }, (response: any) => {
+                    clearTimeout(connectionTimeout);
+                    if (response && response.success) {
+                        console.log('Registration acknowledged by Relay.');
+                        resolve();
+                    } else {
+                        // Pass the error from the server if available
+                        const errorMsg = response?.error || 'Relay Server rejected registration.';
+                        reject(new Error(errorMsg));
+                    }
+                });
+            });
+
+            // 2. Incoming Logic (Student Joins)
+            this.relaySocket.on('student_joined_relay', (data: { studentSocketId: string, info: { name: string, grade: string, password?: string } }) => {
+                // Password check
+                if (this.password && data.info.password !== this.password) {
+                    this.kickRemoteStudent(data.studentSocketId);
+                    return;
+                }
+
+                // Treat as a regular connection
+                this.handleNewStudentConnection(data.studentSocketId, 'RelayIP', null, data.info);
+            });
+        });
+    }
+
+    // =========================================================================
+    // Unified Student Management
+    // =========================================================================
+
+    private handleNewStudentConnection(socketId: string, ipAddr: string, directSocket: Socket | null, preInfo?: { name: string; grade: string }) {
+        console.log('Student connected:', socketId);
+
+        const registerStudent = (info: { name: string; grade: string }) => {
+            const uniqueId = `${info.name}_${info.grade}`;
+            let student = this.students.get(uniqueId);
+
+            if (student) {
+                // Reconnect
+                student.socketId = socketId;
+                student.status = this.isClassLocked ? 'locked' : 'active';
+                student.lastSeen = Date.now();
+                student.connectedAt = Date.now();
+                student.ip = ipAddr;
+            } else {
+                // New
+                student = {
+                    id: uniqueId,
+                    socketId: socketId,
+                    name: info.name,
+                    grade: info.grade,
+                    ip: ipAddr,
+                    status: this.isClassLocked ? 'locked' : 'active',
+                    lastSeen: Date.now(),
+                    connectedAt: Date.now(),
+                    totalDuration: 0
+                };
+            }
+
+            this.students.set(uniqueId, student);
+            this.socketToStudentId.set(socketId, uniqueId);
+            this.broadcastStudentList();
+            this.log(`תלמיד התחבר: ${info.name} (כיתה ${info.grade})`, 'info');
+
+            // Send Lock signal if needed
+            if (this.isClassLocked) {
+                this.sendToStudent(socketId, CHANNELS.LOCK_STUDENT, { timeout: this.lockTimeout });
+            }
+
+            // Listen for disconnect (if direct)
+            if (directSocket) {
+                directSocket.on('disconnect', () => {
+                    this.handleStudentDisconnect(socketId);
+                });
+            }
+        };
+
+        if (directSocket) {
+            directSocket.on(CHANNELS.SET_USER_INFO, (info) => registerStudent(info));
+        } else if (preInfo) {
+            // For Relay, we already got the info in the join event
+            registerStudent(preInfo);
+        }
+    }
+
+    private handleStudentDisconnect(socketId: string) {
+        const uniqueId = this.socketToStudentId.get(socketId);
+        if (uniqueId) {
+            const student = this.students.get(uniqueId);
+            if (student) {
+                student.status = 'disconnected';
+                if (student.connectedAt) {
+                    student.totalDuration = (student.totalDuration || 0) + (Date.now() - student.connectedAt);
+                    student.connectedAt = undefined;
+                }
+                student.socketId = undefined;
+                this.log(`תלמיד התנתק: ${student.name}`, 'warning');
+            }
+            this.socketToStudentId.delete(socketId);
+        }
+        this.broadcastStudentList();
+    }
+
+    // =========================================================================
+    // Communication Abstraction
+    // =========================================================================
+
+    private sendToStudent(socketId: string, event: string, data?: any) {
+        if (this.config.mode === 'LAN') {
+            this.io?.to(socketId).emit(event, data);
+        } else {
+            this.relaySocket?.emit('relay_message', {
+                targetSocketId: socketId,
+                event,
+                data
+            });
+        }
+    }
+
+    private broadcastToAll(event: string, data?: any) {
+        if (this.config.mode === 'LAN') {
+            this.io?.emit(event, data);
+        } else {
+            // For Relay, we iterate known students or send to our "room" if we implemented it.
+            // Since we track students manually, we can iterate for now or ask Relay to broadcast.
+            // Iterating is safer given current simple Relay implementation.
+            this.students.forEach(s => {
+                if (s.socketId && s.status !== 'disconnected') {
+                    this.sendToStudent(s.socketId, event, data);
+                }
+            });
+        }
+    }
+
+    private kickRemoteStudent(socketId: string) {
+        // In Relay mode, send a kick signal
+        this.relaySocket?.emit('relay_message', {
+            targetSocketId: socketId,
+            event: CHANNELS.KICK_STUDENT
+        });
+        // Also tell relay to drop?
+    }
+
+    // =========================================================================
+    // Public Actions (UI Triggers)
+    // =========================================================================
+
     public lockAll() {
         this.isClassLocked = true;
-        this.io?.emit(CHANNELS.LOCK_STUDENT, { timeout: this.lockTimeout });
+        this.broadcastToAll(CHANNELS.LOCK_STUDENT, { timeout: this.lockTimeout });
         this.updateAllStatuses('locked');
         this.log('הכיתה ננעלה', 'warning');
     }
 
     public unlockAll() {
         this.isClassLocked = false;
-        this.io?.emit(CHANNELS.UNLOCK_STUDENT);
+        this.broadcastToAll(CHANNELS.UNLOCK_STUDENT);
         this.updateAllStatuses('active');
         this.log('הכיתה שוחררה', 'info');
     }
 
-    /**
-     * Locks a specific student.
-     */
     public lockStudent(uniqueId: string) {
         const student = this.students.get(uniqueId);
-        if (student) {
-            if (student.socketId) {
-                this.io?.to(student.socketId).emit(CHANNELS.LOCK_STUDENT, { timeout: this.lockTimeout });
-            }
-            this.updateStudentStatus(uniqueId, 'locked');
-            this.log(`תלמיד ננעל: ${student.name}`, 'warning');
+        if (student && student.socketId) {
+            this.sendToStudent(student.socketId, CHANNELS.LOCK_STUDENT, { timeout: this.lockTimeout });
         }
+        this.updateStudentStatus(uniqueId, 'locked');
+        this.log(`תלמיד ננעל: ${student?.name}`, 'warning');
     }
 
     public unlockStudent(uniqueId: string) {
         const student = this.students.get(uniqueId);
-        if (student) {
-            if (student.socketId) {
-                this.io?.to(student.socketId).emit(CHANNELS.UNLOCK_STUDENT);
-            }
-            this.updateStudentStatus(uniqueId, 'active');
-            this.log(`תלמיד שוחרר: ${student.name}`, 'info');
+        if (student && student.socketId) {
+            this.sendToStudent(student.socketId, CHANNELS.UNLOCK_STUDENT);
         }
+        this.updateStudentStatus(uniqueId, 'active');
+        this.log(`תלמיד שוחרר: ${student?.name}`, 'info');
     }
 
     public kickStudent(uniqueId: string) {
         const student = this.students.get(uniqueId);
         if (student && student.socketId) {
-            this.io?.to(student.socketId).emit(CHANNELS.KICK_STUDENT);
-            const socket = this.io?.sockets.sockets.get(student.socketId);
-            if (socket) {
-                socket.disconnect(true);
+            this.sendToStudent(student.socketId, CHANNELS.KICK_STUDENT);
+
+            if (this.config.mode === 'LAN') {
+                const socket = this.io?.sockets.sockets.get(student.socketId);
+                socket?.disconnect(true);
             }
+
+            // Clean up immediately
+            this.handleStudentDisconnect(student.socketId);
         }
     }
 
     public kickAll() {
-        this.io?.emit(CHANNELS.KICK_STUDENT);
-        this.io?.sockets.sockets.forEach((socket) => {
-            socket.disconnect(true);
-        });
-        // The disconnect handlers will clean up state
+        this.broadcastToAll(CHANNELS.KICK_STUDENT);
+
+        if (this.config.mode === 'LAN') {
+            this.io?.sockets.sockets.forEach((socket) => {
+                socket.disconnect(true);
+            });
+        } else {
+            // For relay, we just sent the message. 
+            // We can locally clear state.
+        }
+
         this.log('כל התלמידים המחוברים נותקו', 'warning');
+
+        // Reset state
+        this.students.forEach(s => {
+            if (s.socketId) this.handleStudentDisconnect(s.socketId);
+        });
     }
 
     private updateAllStatuses(status: 'active' | 'locked') {

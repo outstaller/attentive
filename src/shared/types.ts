@@ -30,6 +30,7 @@ export interface BeaconPacket {
     port: number;
     isSecured: boolean;
     sessionId?: string; // Unique ID for deduplication
+    relayId?: string; // For Internet Mode: Teacher's Socket ID on Relay
 }
 
 export interface LogEntry {
