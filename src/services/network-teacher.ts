@@ -124,6 +124,7 @@ export class TeacherNetworkService {
     // =========================================================================
 
     private startLocalMode(className: string, teacherName: string) {
+        this.log('מצב תקשורת: רשת מקומית (LAN)', 'info');
         this.startUDPServer(className, teacherName);
         this.startSocketServer();
     }
@@ -135,7 +136,9 @@ export class TeacherNetworkService {
             console.log('UDP Beacon started');
         });
 
-        const localIp = ip.address();
+        const localIp = this.getPreferredLocalIp();
+        console.log(`[LAN] Broadcasting presence on IP: ${localIp}`);
+
         const packet: BeaconPacket = {
             type: PacketType.BEACON,
             teacher: teacherName,
@@ -171,7 +174,9 @@ export class TeacherNetworkService {
     private startSocketServer() {
         this.httpServer = http.createServer();
         this.io = new SocketIOServer(this.httpServer, {
-            cors: { origin: '*' }
+            cors: { origin: '*' },
+            pingTimeout: 3000, // Detects disconnect in ~3 sec
+            pingInterval: 2000 // Sends ping every 2 sec
         });
 
         this.io.use((socket, next) => {
@@ -251,6 +256,11 @@ export class TeacherNetworkService {
                 // Treat as a regular connection
                 this.handleNewStudentConnection(data.studentSocketId, 'RelayIP', null, data.info);
             });
+
+            this.relaySocket.on('student_disconnected_relay', (data: { studentSocketId: string }) => {
+                console.log('Relay reported student disconnect:', data.studentSocketId);
+                this.handleStudentDisconnect(data.studentSocketId);
+            });
         });
     }
 
@@ -318,6 +328,25 @@ export class TeacherNetworkService {
         if (uniqueId) {
             const student = this.students.get(uniqueId);
             if (student) {
+                // If we want to keep history for attendance, we should keep them but mark disconnected.
+                // However, user specifically complained about "connected count" being wrong.
+                // Best approach: Mark disconnected, BUT ensure UI counts only 'active' or 'locked'.
+                // Or if the user implies "zombie", maybe the socket didn't close properly?
+                // The user said "zombie node.exe process holding port 3000".
+                // That implies the SERVER didn't close.
+
+                // If the user request is "number should reflect actual currently connected",
+                // we should just remove them from the list or filter the list in UI.
+                // But the UI just shows list length usually.
+
+                // Let's remove them if they disconnect to clean up "zombies" from the view.
+                // OR we can keep them for records but fix the UI count.
+                // Given the complaint, removing them seems cleaner for now, OR we return a list, but we should verify UI logic.
+
+                // Wait, if I delete them, I lose attendance data (totalDuration).
+                // I should keep them as 'disconnected'.
+                // And I should fix the UI to count only (active + locked).
+
                 student.status = 'disconnected';
                 if (student.connectedAt) {
                     student.totalDuration = (student.totalDuration || 0) + (Date.now() - student.connectedAt);
@@ -326,6 +355,7 @@ export class TeacherNetworkService {
                 student.socketId = undefined;
                 this.log(`תלמיד התנתק: ${student.name}`, 'warning');
             }
+            // this.socketToStudentId.delete(socketId); // Keep map? No, socket is dead.
             this.socketToStudentId.delete(socketId);
         }
         this.broadcastStudentList();
@@ -463,5 +493,42 @@ export class TeacherNetworkService {
         if (!this.mainWindow.isDestroyed()) {
             this.mainWindow.send(CHANNELS.GET_STUDENTS, Array.from(this.students.values()));
         }
+    }
+
+    private getPreferredLocalIp(): string {
+        const interfaces = os.networkInterfaces();
+        const addresses: { ip: string, priority: number }[] = [];
+
+        Object.keys(interfaces).forEach((ifname) => {
+            interfaces[ifname]?.forEach((iface) => {
+                // Skip internal and non-IPv4
+                if (iface.family !== 'IPv4' || iface.internal) {
+                    return;
+                }
+
+                // Assign Priority
+                let priority = 0;
+                if (iface.address.startsWith('192.168.')) priority = 100;
+                else if (iface.address.startsWith('10.')) priority = 90;
+                else if (iface.address.startsWith('172.')) priority = 10; // Often virtual/docker
+
+                // Heuristic: demote virtual adapters by name
+                if (ifname.toLowerCase().includes('vethernet') || ifname.toLowerCase().includes('wsl') || ifname.toLowerCase().includes('docker')) {
+                    priority -= 50;
+                }
+
+                addresses.push({ ip: iface.address, priority });
+            });
+        });
+
+        // Sort by priority desc
+        addresses.sort((a, b) => b.priority - a.priority);
+
+        if (addresses.length > 0) {
+            return addresses[0].ip;
+        }
+
+        // Fallback
+        return ip.address();
     }
 }

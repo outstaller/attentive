@@ -25,6 +25,7 @@ export const CHANNELS = {
     STORE_GET: 'store-get',
     STORE_SET: 'store-set',
     LOG_ENTRY: 'log-entry',
+    GET_CONFIG: 'get-config',
 };
 
 export const UI_STRINGS = {

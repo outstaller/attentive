@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { app } from 'electron';
 
 export type AppMode = 'LAN' | 'INTERNET';
 
@@ -9,7 +10,7 @@ export interface AppConfig {
 }
 
 const DEFAULT_CONFIG: AppConfig = {
-    mode: 'INTERNET',
+    mode: 'LAN',
     relayUrl: 'http://algodon.eastus.cloudapp.azure.com'
 };
 
@@ -29,35 +30,42 @@ export class ConfigManager {
     }
 
     private loadConfig(): AppConfig {
+        const configName = 'config.json';
+
+        let possiblePaths: string[] = [];
+
         try {
-            // Check for config.json in the same directory as the executable or root
-            const configName = 'config.json';
-
-            // Paths to check:
-            // 1. process.cwd() (Good for dev: root)
-            // 2. process.resourcesPath (Good for prod: adjacent to app.asar)
-            // 3. execution directory
-
-            let possiblePaths: string[] = [
-                path.join(process.cwd(), configName),
-            ];
-
-            if (process.resourcesPath) {
-                possiblePaths.push(path.join(process.resourcesPath, configName));
+            if (app) {
+                possiblePaths.push(path.join(app.getPath('userData'), configName));
             }
+        } catch (e) { }
 
+        if (process.resourcesPath) {
+            possiblePaths.push(path.join(process.resourcesPath, configName));
+        }
+
+        possiblePaths.push(path.join(process.cwd(), configName));
+
+        console.log('[ConfigManager] Searching for config in paths:', JSON.stringify(possiblePaths));
+
+        try {
             for (const p of possiblePaths) {
                 if (fs.existsSync(p)) {
-                    console.log(`Loading config from ${p}`);
+                    console.log(`[ConfigManager] FOUND config at: ${p}`);
                     const fileContent = fs.readFileSync(p, 'utf-8');
                     const parsed = JSON.parse(fileContent);
-                    return { ...DEFAULT_CONFIG, ...parsed };
+                    const finalConfig = { ...DEFAULT_CONFIG, ...parsed };
+
+                    console.log('[ConfigManager] Active Configuration Dump:', JSON.stringify(finalConfig, null, 2));
+                    return finalConfig;
                 }
             }
         } catch (error) {
-            console.error('Error loading config, using defaults:', error);
+            console.error('[ConfigManager] Error loading config, using defaults:', error);
         }
 
+        console.log('[ConfigManager] No external config found. Using DEFAULTS.');
+        console.log('[ConfigManager] Default Configuration Dump:', JSON.stringify(DEFAULT_CONFIG, null, 2));
         return DEFAULT_CONFIG;
     }
 

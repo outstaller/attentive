@@ -10,10 +10,13 @@ const io = new Server(httpServer, {
     cors: {
         origin: "*", // Adjust in production
     },
+    pingTimeout: 5000,
+    pingInterval: 2500
 });
 
 // State
 const teachers = new Map(); // socketId -> { name, className, sessionId }
+const studentToTeacher = new Map(); // studentSocketId -> teacherSocketId
 
 io.on("connection", (socket) => {
     console.log(`[${socket.id}] New connection`);
@@ -49,6 +52,10 @@ io.on("connection", (socket) => {
         const teacher = teachers.get(teacherSocketId);
         if (teacher) {
             console.log(`   -> Forwarding 'student_joined_relay' to Teacher ${teacherSocketId}`);
+
+            // Map student to teacher for disconnect handling
+            studentToTeacher.set(socket.id, teacherSocketId);
+
             io.to(teacherSocketId).emit("student_joined_relay", {
                 studentSocketId: socket.id,
                 info: studentInfo
@@ -61,12 +68,12 @@ io.on("connection", (socket) => {
 
     // --- Relay Logic (Forwarding) ---
     socket.on("relay_message", ({ targetSocketId, event, data }) => {
-        console.log(`[${socket.id}] relay_message -> ${targetSocketId} [${event}]`);
+        // console.log(`[${socket.id}] relay_message -> ${targetSocketId} [${event}]`);
         io.to(targetSocketId).emit(event, data);
     });
 
     socket.on("add_student_to_room", ({ studentSocketId }) => {
-        const room = `class_${socket.id}`;
+        const room = `class_${socket.id}`; // socket.id is Teacher
         console.log(`[${socket.id}] add_student_to_room: ${studentSocketId} -> ${room}`);
         const studentSocket = io.sockets.sockets.get(studentSocketId);
         if (studentSocket) {
@@ -75,20 +82,31 @@ io.on("connection", (socket) => {
     });
 
     socket.on("relay_room_message", ({ room, event, data }) => {
-        console.log(`[${socket.id}] relay_room_message -> ${room} [${event}]`);
+        // console.log(`[${socket.id}] relay_room_message -> ${room} [${event}]`);
         socket.to(room).emit(event, data);
     });
 
     // --- Disconnect ---
     socket.on("disconnect", (reason) => {
         console.log(`[${socket.id}] Disconnect: ${reason}`);
+
+        // 1. If it was a Teacher
         if (teachers.has(socket.id)) {
             console.log(`   -> Teacher Removed: ${teachers.get(socket.id).name}`);
             teachers.delete(socket.id);
+            // Optionally notify students? They will timeout eventually.
+        }
+
+        // 2. If it was a Student
+        if (studentToTeacher.has(socket.id)) {
+            const teacherId = studentToTeacher.get(socket.id);
+            console.log(`   -> Notifying Teacher ${teacherId} of student disconnect`);
+            io.to(teacherId).emit("student_disconnected_relay", { studentSocketId: socket.id });
+            studentToTeacher.delete(socket.id);
         }
     });
 });
 
 httpServer.listen(PORT, () => {
-    console.log(`Relay server v1.0 running on port ${PORT}`);
+    console.log(`Relay server v1.1 running on port ${PORT}`);
 });

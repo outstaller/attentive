@@ -61,6 +61,12 @@ const App = () => {
                 // Auto-start discovery
                 ipcRenderer.send(CHANNELS.START_STUDENT);
             }
+
+            // Get Network Config
+            // const config = await ipcRenderer.invoke(CHANNELS.GET_CONFIG);
+            // if (config && config.mode) {
+            //    setNetworkMode(config.mode);
+            // }
         };
         loadSettings();
     }, []);
@@ -371,7 +377,7 @@ const App = () => {
                             <div style={{ ...styles.card, width: '90%', height: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
                                 <div style={{ ...styles.controls, flexShrink: 0 }}>
                                     <div>
-                                        <strong>שיעור: {className} </strong> | IP: {require('ip').address()}
+                                        <strong>שיעור: {className} </strong>
                                     </div>
                                     <div style={{ display: 'flex', gap: 10 }}>
                                         <button style={styles.dangerButton} onClick={lockAll}>{UI_STRINGS.teacher.lockAll}</button>
@@ -388,7 +394,7 @@ const App = () => {
                                     </div>
                                 </div>
                                 <div style={{ padding: '0 20px', marginBottom: 10, fontWeight: 'bold', flexShrink: 0 }}>
-                                    {UI_STRINGS.teacher.students}: {students.length}
+                                    {UI_STRINGS.teacher.students}: {students.filter(s => s.status !== 'disconnected').length}
                                 </div>
                                 <div style={styles.scrollableGrid}>
                                     <div style={styles.grid}>

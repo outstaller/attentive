@@ -19,6 +19,10 @@ export class LockManager {
         // Prepare resources if needed
     }
 
+    public get locked(): boolean {
+        return this.isLocked;
+    }
+
     /**
      * Locks the screen by creating a covering window and blocking shortcuts.
      * @param timeoutMinutes Optional dynamic timeout from the teacher.

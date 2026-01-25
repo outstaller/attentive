@@ -6,13 +6,34 @@
 
 import { app, BrowserWindow, ipcMain, globalShortcut, dialog } from 'electron';
 import path from 'path';
+import * as fs from 'fs';
 import { TeacherNetworkService } from '../services/network-teacher';
 import { StudentNetworkService } from '../services/network-student';
 import { LockManager } from '../services/lock-manager';
 import { CHANNELS } from '../shared/constants';
 import { BeaconPacket } from '../shared/types';
+import { ConfigManager } from '../shared/config';
 import Store from 'electron-store';
 import { autoUpdater } from 'electron-updater';
+import log from 'electron-log';
+
+// Configure Logging based on App Mode
+const resourcesPath = process.resourcesPath;
+const isStudent = fs.existsSync(path.join(resourcesPath, 'student.flag'));
+const isTeacher = fs.existsSync(path.join(resourcesPath, 'teacher.flag'));
+
+if (isStudent) {
+    log.transports.file.fileName = 'student.log';
+} else if (isTeacher) {
+    log.transports.file.fileName = 'teacher.log';
+}
+
+// Initialize Logging
+log.initialize();
+Object.assign(console, log.functions);
+log.info('Application Starting...');
+if (isStudent) log.info('Mode: Student (Log: student.log)');
+if (isTeacher) log.info('Mode: Teacher (Log: teacher.log)');
 
 // Persistent store for user preferences (name, class name, etc.)
 const store = new Store();
@@ -43,6 +64,14 @@ const createWindow = () => {
     mainWindow.loadFile(path.join(__dirname, '../ui/index.html'));
 
     mainWindow.on('close', (e) => {
+        // 1. Prevent closing if locked (Anti-Alt+F4 for Student)
+        if (lockManager && lockManager.locked) {
+            e.preventDefault();
+            console.log('Blocked app closing attempt while locked.');
+            return;
+        }
+
+        // 2. Graceful Shutdown for Teacher
         if (teacherService) {
             e.preventDefault(); // Stop close
             console.log('Graceful shutdown initiated...');
@@ -70,11 +99,15 @@ app.whenReady().then(() => {
     // This logic checks for updates immediately on startup and then every hour.
 
     // Check immediately
-    autoUpdater.checkForUpdatesAndNotify();
+    autoUpdater.checkForUpdatesAndNotify().catch((e) => {
+        log.warn('Initial update check failed (likely 404/no network):', e.message);
+    });
 
     // Poll every hour
     setInterval(() => {
-        autoUpdater.checkForUpdatesAndNotify();
+        autoUpdater.checkForUpdatesAndNotify().catch((e) => {
+            log.warn('Scheduled update check failed:', e.message);
+        });
     }, 60 * 60 * 1000);
 
     // Notify user when an update is fully downloaded and ready to install
@@ -89,6 +122,15 @@ app.whenReady().then(() => {
                 autoUpdater.quitAndInstall();
             }
         });
+    });
+
+    // Suppress 404 errors when no update is found
+    autoUpdater.on('error', (err) => {
+        if (err.message && (err.message.includes('404') || err.message.includes('latest.yml'))) {
+            log.info('Update Check: No update available (404 on latest.yml).');
+        } else {
+            log.error('Update Error:', err);
+        }
     });
 
     app.on('activate', () => {
@@ -116,8 +158,8 @@ app.on('will-quit', () => {
 // ============================================================================
 
 // Check for enforced mode via flag files (set by installer) in resources directory
-const fs = require('fs');
-const resourcesPath = process.resourcesPath;
+// Check for enforced mode via flag files (set by installer) in resources directory
+// fs and resourcesPath are defined at top/module level now
 
 let enforcedMode: 'teacher' | 'student' | null = null;
 if (fs.existsSync(path.join(resourcesPath, 'teacher.flag'))) {
@@ -137,6 +179,10 @@ ipcMain.handle(CHANNELS.STORE_GET, (event, key) => {
 
 ipcMain.on(CHANNELS.STORE_SET, (event, key, val) => {
     store.set(key, val);
+});
+
+ipcMain.handle(CHANNELS.GET_CONFIG, () => {
+    return ConfigManager.getInstance().getConfig();
 });
 
 // --- Teacher Mode Handlers ---

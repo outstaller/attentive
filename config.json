@@ -1,4 +1,4 @@
 {
-    "mode": "INTERNET",
+    "mode": "LAN",
     "relayUrl": "http://algodon.eastus.cloudapp.azure.com"
 }

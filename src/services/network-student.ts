@@ -154,23 +154,37 @@ export class StudentNetworkService {
         if (this.socket) this.socket.disconnect();
 
         this.connectedClass = { ip, port };
-        this.socket = io(`http://${ip}:${port}`, {
-            auth: { password },
-            transports: ['websocket'],
-            reconnectionAttempts: 3,
-            forceNew: true
-        });
 
-        this.setupSocketHandlers(teacherInfo);
+        // Handle IPv6 (e.g., ::1 needs [::1])
+        const host = ip.includes(':') ? `[${ip}]` : ip;
+        const url = `http://${host}:${port}`;
 
-        this.socket.on('connect', () => { // LAN Connect
-            console.log('LAN Socket connected!');
+        console.log(`[LAN] Attempting connection to: ${url}`);
+
+        try {
+            this.socket = io(url, {
+                auth: { password },
+                transports: ['websocket'],
+                reconnectionAttempts: 3,
+                forceNew: true
+            });
+
+            this.setupSocketHandlers(teacherInfo);
+
+            this.socket.on('connect', () => { // LAN Connect
+                console.log('[LAN] Socket connected successfully!');
+                if (!this.mainWindow.isDestroyed()) {
+                    this.mainWindow.send(CHANNELS.STUDENT_STATUS_UPDATE, 'connected');
+                }
+                this.wasKicked = false;
+                this.socket?.emit(CHANNELS.SET_USER_INFO, info);
+            });
+        } catch (e) {
+            console.error('[LAN] Connection Fatal Error:', e);
             if (!this.mainWindow.isDestroyed()) {
-                this.mainWindow.send(CHANNELS.STUDENT_STATUS_UPDATE, 'connected');
+                this.mainWindow.send(CHANNELS.STUDENT_STATUS_UPDATE, 'error', 'Fatal Connection Error');
             }
-            this.wasKicked = false;
-            this.socket?.emit(CHANNELS.SET_USER_INFO, info);
-        });
+        }
     }
 
     private connectInternet(teacherRelayId: string, info: { name: string; grade: string }, password?: string, teacherInfo?: any) {
