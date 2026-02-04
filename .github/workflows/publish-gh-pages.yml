@@ -1,8 +1,10 @@
 name: Publish Updates to GitHub Pages
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["Release Installers (Teacher + Student)"]
+    types:
+      - completed
 
 jobs:
   publish-to-gh-pages:
@@ -25,7 +27,7 @@ jobs:
       - name: Download All Release Assets
         uses: robinraju/release-downloader@v1.9
         with:
-          tag: ${{ github.event.release.tag_name }}
+          tag: ${{ github.event.workflow_run.head_branch }}
           fileName: "*"
           out-file-path: "assets"
 
@@ -58,5 +60,5 @@ jobs:
           git config user.name "GitHub Action"
           git config user.email "action@github.com"
           git add .
-          git commit -m "Update releases for version ${{ github.event.release.tag_name }}"
+          git commit -m "Update releases for version ${{ github.event.workflow_run.head_branch }}"
           git push
