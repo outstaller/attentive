@@ -5,6 +5,11 @@ on:
     workflows: ["Release Installers (Teacher + Student)"]
     types:
       - completed
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag to publish (e.g. v1.0.12)'
+        required: true
 
 jobs:
   publish-to-gh-pages:
@@ -19,6 +24,14 @@ jobs:
           ref: gh-pages
           path: gh-pages
 
+      - name: Determine Tag
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "TAG_NAME=${{ github.event.inputs.tag_name }}" >> $GITHUB_ENV
+          else
+            echo "TAG_NAME=${{ github.event.workflow_run.head_branch }}" >> $GITHUB_ENV
+          fi
+
       - name: Create directories
         run: |
           mkdir -p gh-pages/update-manager/teacher
@@ -27,13 +40,13 @@ jobs:
       - name: Download All Release Assets
         uses: robinraju/release-downloader@v1.9
         with:
-          tag: ${{ github.event.workflow_run.head_branch }}
+          tag: ${{ env.TAG_NAME }}
           fileName: "*"
           out-file-path: "assets"
 
       - name: Organize Assets
         run: |
-          echo "Organizing files..."
+          echo "Organizing files for ${{ env.TAG_NAME }}..."
           # Teacher
           # Move Exe
           find assets -name "*Teacher*.exe" -exec mv {} gh-pages/update-manager/teacher/ \;
@@ -60,5 +73,5 @@ jobs:
           git config user.name "GitHub Action"
           git config user.email "action@github.com"
           git add .
-          git commit -m "Update releases for version ${{ github.event.workflow_run.head_branch }}"
+          git commit -m "Update releases for version ${{ env.TAG_NAME }}"
           git push
