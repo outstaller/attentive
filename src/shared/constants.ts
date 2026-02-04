@@ -1,4 +1,5 @@
 export const UDP_PORT = 41234;
+export const MULTICAST_ADDR = '239.255.42.99';
 export const TCP_PORT = 3000;
 export const MAX_LOCK_TIME_MS = 60 * 60 * 1000; // 60 minutes
 
@@ -26,6 +27,7 @@ export const CHANNELS = {
     STORE_SET: 'store-set',
     LOG_ENTRY: 'log-entry',
     GET_CONFIG: 'get-config',
+    GET_APP_VERSION: 'get-app-version',
 };
 
 export const UI_STRINGS = {

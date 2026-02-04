@@ -9,7 +9,7 @@
 import dgram from 'dgram';
 import { io, Socket } from 'socket.io-client';
 import { ipcMain, WebContents } from 'electron';
-import { UDP_PORT, CHANNELS } from '../shared/constants';
+import { UDP_PORT, CHANNELS, MULTICAST_ADDR } from '../shared/constants';
 import { PacketType, BeaconPacket } from '../shared/types';
 import { ConfigManager } from '../shared/config';
 
@@ -85,6 +85,12 @@ export class StudentNetworkService {
         this.udpSocket.bind(UDP_PORT, () => {
             console.log('Student listening for beacons on port', UDP_PORT);
             this.udpSocket?.setBroadcast(true);
+            try {
+                this.udpSocket?.addMembership(MULTICAST_ADDR);
+                console.log(`Joined multicast group: ${MULTICAST_ADDR}`);
+            } catch (e) {
+                console.error('Failed to join multicast group:', e);
+            }
         });
     }
 

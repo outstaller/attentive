@@ -12,7 +12,7 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import { io, Socket as ClientSocket } from 'socket.io-client';
 import http from 'http';
 import { ipcMain, WebContents } from 'electron';
-import { UDP_PORT, TCP_PORT, CHANNELS } from '../shared/constants';
+import { UDP_PORT, TCP_PORT, CHANNELS, MULTICAST_ADDR } from '../shared/constants';
 import { Student, PacketType, BeaconPacket } from '../shared/types';
 import { ConfigManager } from '../shared/config';
 import * as ip from 'ip';
@@ -133,6 +133,7 @@ export class TeacherNetworkService {
         this.udpSocket = dgram.createSocket('udp4');
         this.udpSocket.bind(() => {
             this.udpSocket?.setBroadcast(true);
+            this.udpSocket?.setMulticastTTL(128); // Allow crossing VLANs/Routers
             console.log('UDP Beacon started');
         });
 
@@ -165,6 +166,7 @@ export class TeacherNetworkService {
                             if (err) console.error(`Error sending beacon on ${name}:`, err);
                         });
                         this.udpSocket?.send(message, UDP_PORT, '255.255.255.255', () => { });
+                        this.udpSocket?.send(message, UDP_PORT, MULTICAST_ADDR, () => { });
                     }
                 }
             }

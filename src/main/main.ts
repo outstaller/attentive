@@ -185,6 +185,10 @@ ipcMain.handle(CHANNELS.GET_CONFIG, () => {
     return ConfigManager.getInstance().getConfig();
 });
 
+ipcMain.handle(CHANNELS.GET_APP_VERSION, () => {
+    return app.getVersion();
+});
+
 // --- Teacher Mode Handlers ---
 ipcMain.handle(CHANNELS.START_TEACHER, async (event, { name, className, password, lockTimeout }) => {
     if (!mainWindow) return { success: false, error: 'Internal Error' };

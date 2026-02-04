@@ -34,6 +34,9 @@ const App = () => {
     const [inputPassword, setInputPassword] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
     const [showStopConfirm, setShowStopConfirm] = useState(false);
+    const [appVersion, setAppVersion] = useState('');
+    const [networkMode, setNetworkMode] = useState<'LAN' | 'INTERNET'>('LAN');
+    const [relayUrl, setRelayUrl] = useState('');
 
     // Load Settings & IPC Listeners
     useEffect(() => {
@@ -49,24 +52,25 @@ const App = () => {
             const lTimeout = await ipcRenderer.invoke(CHANNELS.STORE_GET, 'lockTimeout');
             if (lTimeout) setLockTimeout(lTimeout);
 
+            const version = await ipcRenderer.invoke(CHANNELS.GET_APP_VERSION);
+            setAppVersion(version || '1.0.x');
+
+            // Get Network Config
+            const config = await ipcRenderer.invoke(CHANNELS.GET_CONFIG);
+            if (config) {
+                if (config.mode) setNetworkMode(config.mode);
+                if (config.relayUrl) setRelayUrl(config.relayUrl);
+            }
+
             // Check for enforced mode
             const enforcedMode = await ipcRenderer.invoke(CHANNELS.APP_MODE);
             if (enforcedMode === 'teacher') {
                 setMode('teacher');
-                // Auto-start?? Maybe just show teacher dashboard ready to start.
-                // User still needs to click Start Class usually, but if we want seamless:
-                // For now, just switching to the view is enough.
             } else if (enforcedMode === 'student') {
                 setMode('student');
                 // Auto-start discovery
                 ipcRenderer.send(CHANNELS.START_STUDENT);
             }
-
-            // Get Network Config
-            // const config = await ipcRenderer.invoke(CHANNELS.GET_CONFIG);
-            // if (config && config.mode) {
-            //    setNetworkMode(config.mode);
-            // }
         };
         loadSettings();
     }, []);
@@ -115,7 +119,6 @@ const App = () => {
 
         const handleStatusUpdate = (e: any, status: any, msg: any) => {
             if (status === 'error') {
-                // Removed alert - just show in UI
                 setErrorMessage(msg === 'Invalid password' ? UI_STRINGS.student.incorrectPassword : 'החיבור לכיתה נכשל.');
             } else if (status === 'connection_lost') {
                 setConnectedStatus('disconnected');
@@ -306,6 +309,71 @@ const App = () => {
         shell.openPath(filePath);
     };
 
+    const handleSupportClick = () => {
+        const supportUrl = "https://forms.gle/yVW24Zt4wqnMofmSA";
+        shell.openExternal(supportUrl);
+    };
+
+    const NetworkIndicator = ({ style, size = 24 }: { style?: React.CSSProperties, size?: number }) => {
+        const isLan = networkMode === 'LAN';
+        const title = isLan
+            ? 'Network: Local Area Network (LAN)'
+            : `Network: Internet (Relay: ${relayUrl})`;
+
+        return (
+            <div
+                title={title}
+                style={{
+                    cursor: 'help',
+                    zIndex: 1000,
+                    opacity: 0.7,
+                    fontSize: size,
+                    ...style
+                }}
+            >
+                {isLan ? '📶' : '🌐'}
+            </div>
+        );
+    };
+
+    const SupportButton = () => (
+        <div style={{ position: 'fixed', bottom: 20, left: 20, zIndex: 900 }}>
+            <button
+                onClick={handleSupportClick}
+                style={{
+                    background: '#6c757d',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '20px',
+                    padding: '8px 15px',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    fontSize: 14
+                }}
+                title="דיווח על תקלה או הצעה"
+            >
+                📧 תמיכה
+            </button>
+        </div>
+    );
+
+    const VersionDisplay = () => (
+        <div style={{
+            position: 'fixed',
+            bottom: 5,
+            right: 10,
+            fontSize: 10,
+            color: '#aaa',
+            zIndex: 900,
+            fontFamily: 'monospace'
+        }}>
+            v{appVersion}
+        </div>
+    );
+
     // --- Render Selection ---
     if (mode === 'selection') {
         return (
@@ -315,6 +383,9 @@ const App = () => {
                     <button style={styles.bigButton} onClick={() => setMode('teacher')}>אני מורה 👨‍🏫</button>
                     <button style={styles.bigButton} onClick={startStudentMode}>אני תלמיד 👨‍🎓</button>
                 </div>
+                <SupportButton />
+                <NetworkIndicator style={{ position: 'absolute', top: 10, right: 20 }} />
+                <VersionDisplay />
             </div>
         );
     }
@@ -376,8 +447,9 @@ const App = () => {
                         <div style={styles.dashboardContent}>
                             <div style={{ ...styles.card, width: '90%', height: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
                                 <div style={{ ...styles.controls, flexShrink: 0 }}>
-                                    <div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                         <strong>שיעור: {className} </strong>
+                                        <NetworkIndicator size={18} style={{ opacity: 0.8 }} />
                                     </div>
                                     <div style={{ display: 'flex', gap: 10 }}>
                                         <button style={styles.dangerButton} onClick={lockAll}>{UI_STRINGS.teacher.lockAll}</button>
@@ -462,7 +534,10 @@ const App = () => {
                         </div>
                     </div>
                 )}
-            </div >
+                <SupportButton />
+                {/* NetworkIndicator moved inline */}
+                <VersionDisplay />
+            </div>
         );
     }
 
@@ -480,6 +555,9 @@ const App = () => {
                             {UI_STRINGS.student.privacyDisclaimer}
                         </p>
                     </div>
+                    <SupportButton />
+                    <NetworkIndicator style={{ position: 'absolute', top: 10, right: 20 }} />
+                    <VersionDisplay />
                 </div>
             )
         }
@@ -496,6 +574,9 @@ const App = () => {
                             ipcRenderer.send(CHANNELS.START_STUDENT);
                         }}>{UI_STRINGS.student.backToMain}</button>
                     </div>
+                    <SupportButton />
+                    <NetworkIndicator style={{ position: 'absolute', top: 10, right: 20 }} />
+                    <VersionDisplay />
                 </div>
             )
         }
@@ -560,6 +641,9 @@ const App = () => {
                         </div>
                     </div>
                 )}
+                <SupportButton />
+                <NetworkIndicator style={{ position: 'absolute', top: 10, right: 20 }} />
+                <VersionDisplay />
             </div>
         );
     }
