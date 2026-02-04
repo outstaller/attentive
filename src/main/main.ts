@@ -110,17 +110,18 @@ app.whenReady().then(() => {
         });
     }, 60 * 60 * 1000);
 
-    // Notify user when an update is fully downloaded and ready to install
+    // Force update when downloaded, but warn user
     autoUpdater.on('update-downloaded', () => {
+        log.info('Update downloaded. Prompting and restarting...');
         dialog.showMessageBox({
             type: 'info',
-            title: 'Update Ready',
-            message: 'A new version has been downloaded. Restart now to install?',
-            buttons: ['Restart', 'Later']
-        }).then((result) => {
-            if (result.response === 0) {
-                autoUpdater.quitAndInstall();
-            }
+            title: 'עדכון גרסה',
+            message: 'גרסה חדשה ירדה למחשב. היישום ייסגר כעת כדי להתקין את העדכון.',
+            buttons: ['אישור']
+        }).then(() => {
+            setImmediate(() => {
+                autoUpdater.quitAndInstall(true, true);
+            });
         });
     });
 

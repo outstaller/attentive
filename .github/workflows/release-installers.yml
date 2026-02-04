@@ -25,9 +25,18 @@ jobs:
       - run: npm run dist:student -- --publish never
       - run: npm run dist:teacher -- --publish never
 
+      - name: Rename latest.yml for Release
+        run: |
+          mv release/teacher/latest.yml release/teacher/latest-teacher.yml
+          mv release/student/latest.yml release/student/latest-student.yml
+
       - name: Upload installers to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             release/teacher/*.exe
+            release/teacher/*.blockmap
+            release/teacher/latest-teacher.yml
             release/student/*.exe
+            release/student/*.blockmap
+            release/student/latest-student.yml
