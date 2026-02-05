@@ -4,6 +4,8 @@
 !define APP_NAME "Attentive"
 !define EXEC_NAME "${PRODUCT_NAME}.exe"
 
+Var /GLOBAL BatchFile
+
 !macro customInstall
   ; Check if we have already configured the firewall/migrated
   ReadRegStr $0 HKCU "Software\${PRODUCT_NAME}" "FirewallConfigured"
@@ -12,7 +14,6 @@
     DetailPrint "First time install/update to per-user. Configuring Firewall & Migrating..."
     
     ; Define paths
-    Var /GLOBAL BatchFile
     StrCpy $BatchFile "$TEMP\attentive_setup_helper.bat"
     
     ; Create a batch file to run elevated commands
