@@ -5,7 +5,6 @@
 !define EXEC_NAME "${PRODUCT_NAME}.exe"
 
 Var /GLOBAL BatchFile
-Var /GLOBAL LegacyUninstallString
 
 !macro customInstall
   ; Define log path
@@ -39,25 +38,25 @@ Var /GLOBAL LegacyUninstallString
     
     ; 3. Check for and remove Legacy (Per-Machine) Installation using Registry
     
-    StrCpy $LegacyUninstallString ""
+    StrCpy $R1 ""
     
     ; Check 64-bit Registry first
     SetRegView 64
-    ReadRegStr $LegacyUninstallString HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "UninstallString"
+    ReadRegStr $R1 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "UninstallString"
     SetRegView 32 ; Restore view
     
-    ${If} $LegacyUninstallString == ""
-        ReadRegStr $LegacyUninstallString HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "UninstallString"
+    ${If} $R1 == ""
+        ReadRegStr $R1 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "UninstallString"
     ${EndIf}
     
-    ${If} $LegacyUninstallString != ""
-        DetailPrint "Found legacy uninstaller: $LegacyUninstallString"
-        FileWrite $9 "Found legacy uninstaller: $LegacyUninstallString$\r$\n"
+    ${If} $R1 != ""
+        DetailPrint "Found legacy uninstaller: $R1"
+        FileWrite $9 "Found legacy uninstaller: $R1$\r$\n"
         
-        FileWrite $0 "echo Found legacy uninstaller: $LegacyUninstallString >> $TEMP\attentive_migration.log$\r$\n"
+        FileWrite $0 "echo Found legacy uninstaller: $R1 >> $TEMP\attentive_migration.log$\r$\n"
         FileWrite $0 "echo Running uninstaller... >> $TEMP\attentive_migration.log$\r$\n"
         
-        FileWrite $0 "$LegacyUninstallString /S >> $TEMP\attentive_migration.log 2>&1$\r$\n"
+        FileWrite $0 "$R1 /S >> $TEMP\attentive_migration.log 2>&1$\r$\n"
     ${Else}
         DetailPrint "No legacy uninstaller found in Registry."
         FileWrite $9 "No legacy uninstaller found in Registry.$\r$\n"
