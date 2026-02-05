@@ -44,6 +44,12 @@ Var /GLOBAL BatchFile
     FileWrite $0 "  echo Found legacy installation in Program Files (x86). Removing...$\r$\n"
     FileWrite $0 "  $\"$PROGRAMFILES32\${PRODUCT_NAME}\Uninstall.exe$\" /S$\r$\n"
     FileWrite $0 ")$\r$\n"
+
+    ; Legacy Path 3: Program Files (64-bit) - likely the issue
+    FileWrite $0 "if exist $\"$PROGRAMFILES64\${PRODUCT_NAME}\Uninstall.exe$\" ($\r$\n"
+    FileWrite $0 "  echo Found legacy installation in Program Files (64-bit). Removing...$\r$\n"
+    FileWrite $0 "  $\"$PROGRAMFILES64\${PRODUCT_NAME}\Uninstall.exe$\" /S$\r$\n"
+    FileWrite $0 ")$\r$\n"
     
     FileClose $0
 
