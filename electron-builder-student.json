@@ -18,7 +18,7 @@
     },
     "nsis": {
         "oneClick": true,
-        "perMachine": true,
+        "perMachine": false,
         "runAfterFinish": true,
         "include": "build/installer.nsh"
     },
