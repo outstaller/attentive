@@ -1,3 +1,4 @@
+RequestExecutionLevel user
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
 
@@ -101,7 +102,16 @@ Var /GLOBAL BatchFile
   FileWrite $0 "netsh advfirewall firewall delete rule name=$\"${PRODUCT_NAME}$\"$\r$\n"
   FileClose $0
   
-  ExecWait 'powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Start-Process -FilePath $\"$BatchFile$\" -Verb RunAs -Wait"'
+  ; ExecWait 'powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Start-Process -FilePath $\"$BatchFile$\" -Verb RunAs -Wait"'
   
   ; DeleteRegValue HKCU "Software\${PRODUCT_NAME}" "FirewallConfigured"
 !macroend
+
+Function .onInstSuccess
+  ; Check if we are running as an update (silent)
+  ${If} ${Silent}
+    ; If silent, we want to auto-launch the app because quitAndInstall was called.
+    ; Electron-builder usually handles this via RequestExecutionLevel user, but sometimes we need to force it.
+    Exec '"$INSTDIR\${PRODUCT_NAME}.exe"'
+  ${EndIf}
+FunctionEnd

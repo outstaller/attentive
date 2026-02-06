@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -17,7 +18,8 @@
             background-color: #ffffff;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             overflow: hidden;
-            border: 1px solid #e0e0e0; /* Subtle border for frameless window */
+            border: 1px solid #e0e0e0;
+            /* Subtle border for frameless window */
             user-select: none;
         }
 
@@ -39,14 +41,20 @@
             width: 30px;
             height: 30px;
             border: 3px solid #f3f3f3;
-            border-top: 3px solid #0078d4; /* Windows Blue */
+            border-top: 3px solid #0078d4;
+            /* Windows Blue */
             border-radius: 50%;
             animation: spin 1s linear infinite;
         }
 
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
         }
 
         /* Update specific message ID to be manipulated by JS if needed */
@@ -55,19 +63,36 @@
         }
     </style>
 </head>
+
 <body>
     <img src="assets/logo.png" alt="Logo" class="logo">
     <div id="message" class="status-text">בודק עדכונים...</div>
-    <div class="spinner"></div>
+    <div id="spinner" class="spinner"></div>
+    <!-- Button for manual confirmation -->
+    <button id="update-btn"
+        style="display: none; padding: 10px 20px; font-size: 16px; cursor: pointer; background-color: #0078d4; color: white; border: none; border-radius: 4px;">התקן
+        עדכון</button>
 
     <script>
         const { ipcRenderer } = require('electron');
-        
+
         // Listen for status updates from main process
-        ipcRenderer.on('splash-status', (event, text) => {
+        ipcRenderer.on('splash-status', (event, text, showButton) => {
             const el = document.getElementById('message');
             if (el) el.innerText = text;
+
+            if (showButton) {
+                document.getElementById('spinner').style.display = 'none';
+                const btn = document.getElementById('update-btn');
+                if (btn) {
+                    btn.style.display = 'block';
+                    btn.onclick = () => {
+                        ipcRenderer.send('install-update');
+                    };
+                }
+            }
         });
     </script>
 </body>
+
 </html>

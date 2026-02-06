@@ -148,25 +148,35 @@ app.whenReady().then(() => {
         }
     });
 
-    // 4. Update Downloaded -> Close Splash (Native dialog will take over)
+    // 4. Update Downloaded -> Show Button on Splash
     autoUpdater.on('update-downloaded', () => {
-        log.info('Update downloaded. Prompting...');
-        if (splashWindow && !splashWindow.isDestroyed()) {
-            splashWindow.close();
-            splashWindow = null;
-        }
+        log.info('Update downloaded. Prompting via Splash...');
 
-        // Native dialog prompt logic
-        dialog.showMessageBox({
-            type: 'info',
-            title: '\u202B' + 'עדכון גרסה' + '\u202C',
-            message: '\u202B' + 'גרסה חדשה ירדה למחשב. היישום ייסגר כעת כדי להתקין את העדכון.' + '\u202C',
-            buttons: ['\u202B' + 'אישור' + '\u202C']
-        }).then(() => {
-            setImmediate(() => {
-                autoUpdater.quitAndInstall(true, true);
+        // If splash is open, show the button
+        if (splashWindow && !splashWindow.isDestroyed()) {
+            // Second arg 'true' enables the button in splash.html
+            splashWindow.webContents.send('splash-status', 'גרסה חדשה מוכנה להתקנה.', true);
+        } else {
+            // Fallback: If splash was closed (unlikely but possible), relaunch it or use native dialog? 
+            // Ideally we shouldn't have closed it.
+            // For now, let's just reinstall the splash or use native dialog as fallback.
+            dialog.showMessageBox({
+                type: 'info',
+                title: '\u202B' + 'עדכון גרסה' + '\u202C',
+                message: '\u202B' + 'גרסה חדשה מוכנה. התקן?' + '\u202C',
+                buttons: ['\u202B' + 'אישור' + '\u202C']
+            }).then(() => {
+                setImmediate(() => {
+                    autoUpdater.quitAndInstall(true, true);
+                });
             });
-        });
+        }
+    });
+
+    // IPC handler for Splash Button
+    ipcMain.on('install-update', () => {
+        log.info('User confirmed update via Splash. Quitting and Installing...');
+        autoUpdater.quitAndInstall(true, true);
     });
 
     // Trigger Check
