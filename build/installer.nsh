@@ -5,10 +5,40 @@ RequestExecutionLevel user
 !define APP_NAME "Attentive"
 !define EXEC_NAME "${PRODUCT_NAME}.exe"
 
-Var /GLOBAL BatchFile
+Var /GLOBAL PreviousVersion
 
 !include "WordFunc.nsh"
 !insertmacro VersionCompare
+
+!macro customInit
+  ; -----------------------------------------------------------
+  ; Step 1: Detect Installed Version (Before Install)
+  ; -----------------------------------------------------------
+  ; We must do this here because by the time customInstall runs, 
+  ; the installer has already written the new version to the registry.
+  
+  StrCpy $PreviousVersion "0.0.0"
+  
+  ; Check HKLM (Legacy detection)
+  SetRegView 64
+  ReadRegStr $0 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "DisplayVersion"
+  SetRegView 32
+  ${If} $0 == ""
+      ReadRegStr $0 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "DisplayVersion"
+  ${EndIf}
+  
+  ${If} $0 != ""
+      StrCpy $PreviousVersion $0
+      ; We can't write to main log here comfortably as it opens in customInstall, 
+      ; but we could debug print if needed.
+  ${Else}
+      ; Check HKCU (Modern detection)
+      ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "DisplayVersion"
+      ${If} $0 != ""
+          StrCpy $PreviousVersion $0
+      ${EndIf}
+  ${EndIf}
+!macroend
 
 !macro customInstall
   ; Define log path
@@ -17,42 +47,16 @@ Var /GLOBAL BatchFile
   FileWrite $9 "--- Starting Migration Log ---$\r$\n"
   FileWrite $9 "Product Name: ${PRODUCT_NAME}$\r$\n"
 
-  ; -----------------------------------------------------------
-  ; Step 1: Detect Installed Version
-  ; -----------------------------------------------------------
-  ; Default to "0.0.0" if no version found (Clean Install)
-  StrCpy $0 "0.0.0"
-
-  ; Check HKLM (Legacy detection)
-  SetRegView 64
-  ReadRegStr $1 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "DisplayVersion"
-  SetRegView 32
-  ${If} $1 == ""
-      ReadRegStr $1 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "DisplayVersion"
-  ${EndIf}
-  
-  ${If} $1 != ""
-      StrCpy $0 $1
-      FileWrite $9 "Detected Legacy (HKLM) Version: $0$\r$\n"
-  ${Else}
-      ; Check HKCU (Modern detection)
-      ReadRegStr $1 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "DisplayVersion"
-      ${If} $1 != ""
-          StrCpy $0 $1
-          FileWrite $9 "Detected Modern (HKCU) Version: $0$\r$\n"
-      ${Else}
-          FileWrite $9 "No existing version found. Assuming Clean Install (0.0.0).$\r$\n"
-      ${EndIf}
-  ${EndIf}
+  FileWrite $9 "Pre-Install Detected Version: $PreviousVersion$\r$\n"
 
   ; -----------------------------------------------------------
   ; Step 2: Compare Version
   ; -----------------------------------------------------------
-  ; Compare Installed Version ($0) with "1.0.10"
+  ; Compare Previous Version ($PreviousVersion) with "1.0.10"
   ; Result in $1: 0=Equal, 1=Installed is Newer, 2=Installed is Older
-  ${VersionCompare} "$0" "1.0.10" $1
+  ${VersionCompare} "$PreviousVersion" "1.0.10" $1
   
-  FileWrite $9 "Version Comparison: Detected=$0 vs Target=1.0.10. Result=$1$\r$\n"
+  FileWrite $9 "Version Comparison: Detected=$PreviousVersion vs Target=1.0.10. Result=$1$\r$\n"
 
   ; -----------------------------------------------------------
   ; Step 3: Conditional Logic
@@ -61,7 +65,7 @@ Var /GLOBAL BatchFile
   ${If} $1 == 1
     ; Installed Version > 1.0.10
     ; Firewall rules are assumed to be in place (per-user). No need for elevation.
-    DetailPrint "Current version ($0) is up to date. Skipping firewall configuration."
+    DetailPrint "Previous version ($PreviousVersion) is up to date. Skipping firewall configuration."
     FileWrite $9 "Action: Skip (Version > 1.0.10).$\r$\n"
     
   ${Else}
@@ -69,7 +73,7 @@ Var /GLOBAL BatchFile
     ; We need to ADD firewall rules (Requires Elevation).
     ; If it's a legacy upgrade, we also need to run the legacy uninstaller.
 
-    DetailPrint "Legacy or Clean Install detected ($0). Configuring Firewall..."
+    DetailPrint "Legacy or Clean Install detected ($PreviousVersion). Configuring Firewall..."
     FileWrite $9 "Action: Elevate (Version <= 1.0.10).$\r$\n"
 
     ; Define paths

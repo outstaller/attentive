@@ -180,10 +180,15 @@ app.whenReady().then(() => {
     });
 
     // Trigger Check
-    autoUpdater.checkForUpdates().catch((e) => {
-        log.warn('Initial update check failed to start:', e.message);
-        launchApp();
-    });
+    if (!app.isPackaged) {
+        log.info('Dev Mode: Skipping update check. Launching app...');
+        setTimeout(launchApp, 500);
+    } else {
+        autoUpdater.checkForUpdates().catch((e) => {
+            log.warn('Initial update check failed to start:', e.message);
+            launchApp();
+        });
+    }
 
     // Fallback Polling (if app stays open long enough)
     setInterval(() => {
