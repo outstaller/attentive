@@ -36,6 +36,13 @@ jobs:
         run: |
           mkdir -p gh-pages/update-manager/teacher
           mkdir -p gh-pages/update-manager/student
+          
+          # Clean up old installers to prevent repository bloat (2.3GB artifact issue)
+          echo "Cleaning up old artifacts..."
+          rm -f gh-pages/update-manager/teacher/*.exe
+          rm -f gh-pages/update-manager/teacher/*.blockmap
+          rm -f gh-pages/update-manager/student/*.exe
+          rm -f gh-pages/update-manager/student/*.blockmap
 
       - name: Download All Release Assets
         uses: robinraju/release-downloader@v1.9
