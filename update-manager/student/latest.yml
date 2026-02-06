@@ -1,8 +1,8 @@
-version: 1.0.23
+version: 1.0.24
 files:
-  - url: Attentive Student Setup 1.0.23.exe
-    sha512: 5mbbX1Zdw9x5vVcMAPQ3IlgurSLQBt65ovsvnqvHyHpzYcDq1ZPSdrvLejCRZ7KlOqs+kb5fThY8ZPTG0Mkm+Q==
-    size: 78256864
-path: Attentive Student Setup 1.0.23.exe
-sha512: 5mbbX1Zdw9x5vVcMAPQ3IlgurSLQBt65ovsvnqvHyHpzYcDq1ZPSdrvLejCRZ7KlOqs+kb5fThY8ZPTG0Mkm+Q==
-releaseDate: '2026-02-06T11:53:28.630Z'
+  - url: Attentive Student Setup 1.0.24.exe
+    sha512: ZNHGVxxGk/jzJpa8HVa8jLpuqubcxf48OIYoCzCozyUrgwa52tBKK4znR0fxG0Xj358AJ71DAkkRV099AlY/lw==
+    size: 78256858
+path: Attentive Student Setup 1.0.24.exe
+sha512: ZNHGVxxGk/jzJpa8HVa8jLpuqubcxf48OIYoCzCozyUrgwa52tBKK4znR0fxG0Xj358AJ71DAkkRV099AlY/lw==
+releaseDate: '2026-02-06T12:16:07.612Z'
