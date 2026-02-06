@@ -92,32 +92,76 @@ const createWindow = () => {
 // ============================================================================
 
 app.whenReady().then(() => {
-    createWindow();
-
-    // --- Auto-Update Configuration ---
-    // The feed URL is configured in electron-builder.json (generic provider).
-    // This logic checks for updates immediately on startup and then every hour.
-
-    // Check immediately
-    autoUpdater.checkForUpdatesAndNotify().catch((e) => {
-        log.warn('Initial update check failed (likely 404/no network):', e.message);
+    // --- Splash Window Setup ---
+    let splashWindow: BrowserWindow | null = new BrowserWindow({
+        width: 400,
+        height: 300,
+        transparent: false,
+        frame: false,
+        alwaysOnTop: true,
+        resizable: false,
+        center: true,
+        webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false,
+        },
+        icon: path.join(__dirname, '../ui/assets/icon.png'),
     });
 
-    // Poll every hour
-    setInterval(() => {
-        autoUpdater.checkForUpdatesAndNotify().catch((e) => {
-            log.warn('Scheduled update check failed:', e.message);
-        });
-    }, 60 * 60 * 1000);
+    splashWindow.loadFile(path.join(__dirname, '../ui/splash.html'));
 
-    // Force update when downloaded, but warn user
+    // Helper to close splash and open main
+    const launchApp = () => {
+        if (splashWindow && !splashWindow.isDestroyed()) {
+            splashWindow.close();
+            splashWindow = null;
+        }
+        if (mainWindow === null) {
+            createWindow();
+        }
+    };
+
+    // --- Auto-Update Logic with Splash ---
+
+    // 1. Update Not Available -> Launch App
+    autoUpdater.on('update-not-available', () => {
+        log.info('Update Check: No update available. Launching app...');
+        setTimeout(launchApp, 1500); // 1.5s delay for user to see the splash "checking" state
+    });
+
+    // 2. Error -> Launch App (Fail-safe)
+    autoUpdater.on('error', (err) => {
+        // If it's the 404/latest.yml error (common in dev/no release), treat as no update
+        if (err.message && (err.message.includes('404') || err.message.includes('latest.yml'))) {
+            log.info('Update Check: No update available (404). Launching app...');
+        } else {
+            log.error('Update Check Error:', err);
+        }
+        setTimeout(launchApp, 1500);
+    });
+
+    // 3. Update Available -> Update Splash Text
+    autoUpdater.on('update-available', () => {
+        log.info('Update found! Downloading...');
+        if (splashWindow && !splashWindow.isDestroyed()) {
+            splashWindow.webContents.send('splash-status', 'נמצא עדכון גרסה. מוריד...'); // "Update found. Downloading..."
+        }
+    });
+
+    // 4. Update Downloaded -> Close Splash (Native dialog will take over)
     autoUpdater.on('update-downloaded', () => {
-        log.info('Update downloaded. Prompting and restarting...');
+        log.info('Update downloaded. Prompting...');
+        if (splashWindow && !splashWindow.isDestroyed()) {
+            splashWindow.close();
+            splashWindow = null;
+        }
+
+        // Native dialog prompt logic
         dialog.showMessageBox({
             type: 'info',
-            title: 'עדכון גרסה',
-            message: 'גרסה חדשה ירדה למחשב. היישום ייסגר כעת כדי להתקין את העדכון.',
-            buttons: ['אישור']
+            title: '\u202B' + 'עדכון גרסה' + '\u202C',
+            message: '\u202B' + 'גרסה חדשה ירדה למחשב. היישום ייסגר כעת כדי להתקין את העדכון.' + '\u202C',
+            buttons: ['\u202B' + 'אישור' + '\u202C']
         }).then(() => {
             setImmediate(() => {
                 autoUpdater.quitAndInstall(true, true);
@@ -125,14 +169,19 @@ app.whenReady().then(() => {
         });
     });
 
-    // Suppress 404 errors when no update is found
-    autoUpdater.on('error', (err) => {
-        if (err.message && (err.message.includes('404') || err.message.includes('latest.yml'))) {
-            log.info('Update Check: No update available (404 on latest.yml).');
-        } else {
-            log.error('Update Error:', err);
-        }
+    // Trigger Check
+    autoUpdater.checkForUpdates().catch((e) => {
+        log.warn('Initial update check failed to start:', e.message);
+        launchApp();
     });
+
+    // Fallback Polling (if app stays open long enough)
+    setInterval(() => {
+        // For subsequent background checks, we use standard checking without splash
+        autoUpdater.checkForUpdatesAndNotify().catch((e) => {
+            log.warn('Scheduled update check failed:', e.message);
+        });
+    }, 60 * 60 * 1000);
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) createWindow();

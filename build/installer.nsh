@@ -12,14 +12,16 @@ Var /GLOBAL BatchFile
   FileOpen $9 $0 w
   FileWrite $9 "--- Starting Migration Log ---$\r$\n"
   FileWrite $9 "Product Name: ${PRODUCT_NAME}$\r$\n"
-  FileWrite $9 "Checking Registry Key for: ${UNINSTALL_APP_KEY}$\r$\n"
+  FileWrite $9 "Checking Registry Key: HKCU\Software\${PRODUCT_NAME}\FirewallConfigured$\r$\n"
 
   ; Check if we have already configured the firewall/migrated
   ReadRegStr $0 HKCU "Software\${PRODUCT_NAME}" "FirewallConfigured"
+  FileWrite $9 "Registry Read Result: '$0'$\r$\n"
+  
   ${If} $0 == ""
     
     DetailPrint "First time install/update to per-user. Configuring Firewall & Migrating..."
-    FileWrite $9 "Status: First run detected. Proceeding with migration.$\r$\n"
+    FileWrite $9 "Status: Flag missing. Proceeding with migration.$\r$\n"
     
     ; Define paths
     StrCpy $BatchFile "$TEMP\attentive_setup_helper.bat"
@@ -71,6 +73,7 @@ Var /GLOBAL BatchFile
     
     ; Mark as configured so we don't ask again
     WriteRegStr HKCU "Software\${PRODUCT_NAME}" "FirewallConfigured" "true"
+    FileWrite $9 "Registry Key Written: HKCU\Software\${PRODUCT_NAME}\FirewallConfigured = true$\r$\n"
     
   ${Else}
     DetailPrint "Firewall already configured. Skipping elevation."

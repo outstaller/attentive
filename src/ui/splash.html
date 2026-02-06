@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attentive CMS</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            border: 1px solid #e0e0e0; /* Subtle border for frameless window */
+            user-select: none;
+        }
+
+        .logo {
+            width: 120px;
+            height: auto;
+            margin-bottom: 24px;
+        }
+
+        .status-text {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+
+        /* Spinner */
+        .spinner {
+            width: 30px;
+            height: 30px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #0078d4; /* Windows Blue */
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Update specific message ID to be manipulated by JS if needed */
+        #message {
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <img src="assets/logo.png" alt="Logo" class="logo">
+    <div id="message" class="status-text">בודק עדכונים...</div>
+    <div class="spinner"></div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        
+        // Listen for status updates from main process
+        ipcRenderer.on('splash-status', (event, text) => {
+            const el = document.getElementById('message');
+            if (el) el.innerText = text;
+        });
+    </script>
+</body>
+</html>
