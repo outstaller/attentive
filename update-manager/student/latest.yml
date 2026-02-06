@@ -1,8 +1,8 @@
-version: 1.0.37
+version: 1.0.38
 files:
-  - url: Attentive Student Setup 1.0.37.exe
-    sha512: +PzqW2FpRDo3DiEt4yaRyC9+PFUIbHpG3HSaDOuMO2Q3XoqhX6uJyyKJiKS+Pzg0grSl1FV5zbL5V9eVjQUrKQ==
-    size: 78257463
-path: Attentive Student Setup 1.0.37.exe
-sha512: +PzqW2FpRDo3DiEt4yaRyC9+PFUIbHpG3HSaDOuMO2Q3XoqhX6uJyyKJiKS+Pzg0grSl1FV5zbL5V9eVjQUrKQ==
-releaseDate: '2026-02-06T17:58:13.595Z'
+  - url: Attentive Student Setup 1.0.38.exe
+    sha512: KOI/WBZGsQO8hrZmRxmhb1R4LA05THSVQrWONT0i4kCMfQv92KeL5cocrRhvJevDgOnu2BZHTp3Z6I0p9JCDbQ==
+    size: 78257844
+path: Attentive Student Setup 1.0.38.exe
+sha512: KOI/WBZGsQO8hrZmRxmhb1R4LA05THSVQrWONT0i4kCMfQv92KeL5cocrRhvJevDgOnu2BZHTp3Z6I0p9JCDbQ==
+releaseDate: '2026-02-06T19:13:02.348Z'
