@@ -7,40 +7,90 @@ RequestExecutionLevel user
 
 Var /GLOBAL BatchFile
 
+!include "WordFunc.nsh"
+!insertmacro VersionCompare
+
 !macro customInstall
   ; Define log path
   StrCpy $0 "$TEMP\attentive_migration.log"
   FileOpen $9 $0 w
   FileWrite $9 "--- Starting Migration Log ---$\r$\n"
   FileWrite $9 "Product Name: ${PRODUCT_NAME}$\r$\n"
-  FileWrite $9 "Checking Registry Key: HKCU\Software\${PRODUCT_NAME}\FirewallConfigured$\r$\n"
 
-  ; Check if we have already configured the firewall/migrated
-  ReadRegStr $0 HKCU "Software\${PRODUCT_NAME}" "FirewallConfigured"
-  FileWrite $9 "Registry Read Result: '$0'$\r$\n"
+  ; -----------------------------------------------------------
+  ; Step 1: Detect Installed Version
+  ; -----------------------------------------------------------
+  ; Default to "0.0.0" if no version found (Clean Install)
+  StrCpy $0 "0.0.0"
+
+  ; Check HKLM (Legacy detection)
+  SetRegView 64
+  ReadRegStr $1 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "DisplayVersion"
+  SetRegView 32
+  ${If} $1 == ""
+      ReadRegStr $1 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "DisplayVersion"
+  ${EndIf}
   
-  ${If} $0 == ""
+  ${If} $1 != ""
+      StrCpy $0 $1
+      FileWrite $9 "Detected Legacy (HKLM) Version: $0$\r$\n"
+  ${Else}
+      ; Check HKCU (Modern detection)
+      ReadRegStr $1 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "DisplayVersion"
+      ${If} $1 != ""
+          StrCpy $0 $1
+          FileWrite $9 "Detected Modern (HKCU) Version: $0$\r$\n"
+      ${Else}
+          FileWrite $9 "No existing version found. Assuming Clean Install (0.0.0).$\r$\n"
+      ${EndIf}
+  ${EndIf}
+
+  ; -----------------------------------------------------------
+  ; Step 2: Compare Version
+  ; -----------------------------------------------------------
+  ; Compare Installed Version ($0) with "1.0.10"
+  ; Result in $1: 0=Equal, 1=Installed is Newer, 2=Installed is Older
+  ${VersionCompare} "$0" "1.0.10" $1
+  
+  FileWrite $9 "Version Comparison: Detected=$0 vs Target=1.0.10. Result=$1$\r$\n"
+
+  ; -----------------------------------------------------------
+  ; Step 3: Conditional Logic
+  ; -----------------------------------------------------------
+  
+  ${If} $1 == 1
+    ; Installed Version > 1.0.10
+    ; Firewall rules are assumed to be in place (per-user). No need for elevation.
+    DetailPrint "Current version ($0) is up to date. Skipping firewall configuration."
+    FileWrite $9 "Action: Skip (Version > 1.0.10).$\r$\n"
     
-    DetailPrint "First time install/update to per-user. Configuring Firewall & Migrating..."
-    FileWrite $9 "Status: Flag missing. Proceeding with migration.$\r$\n"
-    
+  ${Else}
+    ; Installed Version <= 1.0.10 (Legacy) OR "0.0.0" (Clean Install)
+    ; We need to ADD firewall rules (Requires Elevation).
+    ; If it's a legacy upgrade, we also need to run the legacy uninstaller.
+
+    DetailPrint "Legacy or Clean Install detected ($0). Configuring Firewall..."
+    FileWrite $9 "Action: Elevate (Version <= 1.0.10).$\r$\n"
+
     ; Define paths
     StrCpy $BatchFile "$TEMP\attentive_setup_helper.bat"
     
     ; Create a batch file to run elevated commands
-    FileOpen $0 $BatchFile w
-    FileWrite $0 "@echo off$\r$\n"
-    FileWrite $0 "echo Configuring Windows Firewall and checking legacy uninstall... >> $TEMP\attentive_migration.log$\r$\n"
+    FileOpen $2 $BatchFile w
+    FileWrite $2 "@echo off$\r$\n"
+    FileWrite $2 "echo Configuring Windows Firewall... >> $TEMP\attentive_migration.log$\r$\n"
     
-    ; 1. Remove old firewall rules (cleanup)
-    FileWrite $0 "netsh advfirewall firewall delete rule name=$\"${PRODUCT_NAME}$\" >> $TEMP\attentive_migration.log 2>&1$\r$\n"
+    ; A. Firewall Rules (Always needed for this branch)
+    ; ------------------------------------------------
+    ; 1. Remove old rules to be safe (cleanup)
+    FileWrite $2 "netsh advfirewall firewall delete rule name=$\"${PRODUCT_NAME}$\" >> $TEMP\attentive_migration.log 2>&1$\r$\n"
     
     ; 2. Add new firewall rules for the NEW location ($INSTDIR)
-    FileWrite $0 "netsh advfirewall firewall add rule name=$\"${PRODUCT_NAME}$\" dir=in action=allow program=$\"$INSTDIR\${PRODUCT_FILENAME}.exe$\" enable=yes >> $TEMP\attentive_migration.log 2>&1$\r$\n"
-    FileWrite $0 "netsh advfirewall firewall add rule name=$\"${PRODUCT_NAME}$\" dir=out action=allow program=$\"$INSTDIR\${PRODUCT_FILENAME}.exe$\" enable=yes >> $TEMP\attentive_migration.log 2>&1$\r$\n"
+    FileWrite $2 "netsh advfirewall firewall add rule name=$\"${PRODUCT_NAME}$\" dir=in action=allow program=$\"$INSTDIR\${PRODUCT_FILENAME}.exe$\" enable=yes >> $TEMP\attentive_migration.log 2>&1$\r$\n"
+    FileWrite $2 "netsh advfirewall firewall add rule name=$\"${PRODUCT_NAME}$\" dir=out action=allow program=$\"$INSTDIR\${PRODUCT_FILENAME}.exe$\" enable=yes >> $TEMP\attentive_migration.log 2>&1$\r$\n"
     
-    ; 3. Check for and remove Legacy (Per-Machine) Installation using Registry
-    
+    ; B. Legacy Uninstaller (Only if found in HKLM)
+    ; ---------------------------------------------
     StrCpy $R1 ""
     
     ; Check 64-bit Registry first
@@ -56,41 +106,28 @@ Var /GLOBAL BatchFile
         DetailPrint "Found legacy uninstaller: $R1"
         FileWrite $9 "Found legacy uninstaller: $R1$\r$\n"
         
-        FileWrite $0 "echo Found legacy uninstaller: $R1 >> $TEMP\attentive_migration.log$\r$\n"
-        FileWrite $0 "echo Running uninstaller... >> $TEMP\attentive_migration.log$\r$\n"
+        FileWrite $2 "echo Found legacy uninstaller: $R1 >> $TEMP\attentive_migration.log$\r$\n"
+        FileWrite $2 "echo Running uninstaller... >> $TEMP\attentive_migration.log$\r$\n"
         
-        FileWrite $0 "$R1 /S >> $TEMP\attentive_migration.log 2>&1$\r$\n"
+        ; Run uninstaller silently
+        FileWrite $2 "$R1 /S >> $TEMP\attentive_migration.log 2>&1$\r$\n"
     ${Else}
-        DetailPrint "No legacy uninstaller found in Registry."
-        FileWrite $9 "No legacy uninstaller found in Registry.$\r$\n"
-        FileWrite $0 "echo No legacy uninstaller found in Registry. >> $TEMP\attentive_migration.log$\r$\n"
+        FileWrite $9 "No legacy uninstaller found (Clean Install or already removed).$\r$\n"
     ${EndIf}
     
-    FileClose $0
-    FileClose $9 ; Close main log before batch appends to it
+    FileClose $2
+    FileClose $9 ; Close log before batch execution
 
     ; Execute the batch file as ADMIN (Trigger UAC) and WAIT
-    ; Re-open log for a second to say we are about to exec - actually we closed it to allow batch to append.
-    ; We can't write to it easily while closed. We'll trust the batch file output.
-    
-    ; ExecWait
     ExecWait 'powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Start-Process -FilePath $\"$BatchFile$\" -Verb RunAs -Wait"'
     
-    ; Re-open log to confirm return
+    ; Re-open log to record completion
     FileOpen $9 "$TEMP\attentive_migration.log" a
     FileSeek $9 0 END
-    FileWrite $9 "Returned from ExecWait.$\r$\n"
+    FileWrite $9 "Elevated batch process finished.$\r$\n"
     
-    ; Mark as configured so we don't ask again
-    WriteRegStr HKCU "Software\${PRODUCT_NAME}" "FirewallConfigured" "true"
-    FileWrite $9 "Registry Key Written: HKCU\Software\${PRODUCT_NAME}\FirewallConfigured = true$\r$\n"
-    FileClose $9
-    
-  ${Else}
-    DetailPrint "Firewall already configured. Skipping elevation."
-    FileWrite $9 "Status: FirewallConfigured flag present. Skipping migration.$\r$\n"
-    FileClose $9
   ${EndIf}
+  FileClose $9
 !macroend
 
 !macro customUninstall
