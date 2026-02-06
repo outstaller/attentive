@@ -5,6 +5,7 @@ RequestExecutionLevel user
 !define APP_NAME "Attentive"
 !define EXEC_NAME "${PRODUCT_NAME}.exe"
 
+Var /GLOBAL BatchFile
 Var /GLOBAL PreviousVersion
 
 !include "WordFunc.nsh"
