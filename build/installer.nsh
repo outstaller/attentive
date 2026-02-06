@@ -103,5 +103,5 @@ Var /GLOBAL BatchFile
   
   ExecWait 'powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Start-Process -FilePath $\"$BatchFile$\" -Verb RunAs -Wait"'
   
-  DeleteRegValue HKCU "Software\${PRODUCT_NAME}" "FirewallConfigured"
+  ; DeleteRegValue HKCU "Software\${PRODUCT_NAME}" "FirewallConfigured"
 !macroend

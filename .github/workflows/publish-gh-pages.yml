@@ -77,6 +77,19 @@ jobs:
                 else
                   echo "No matching exe found for $type_pattern"
                 fi
+
+                # Also rename blockmap if it exists
+                local blockmap_file=$(find assets -name "*${type_pattern}*.blockmap" | head -n 1)
+                if [ -n "$blockmap_file" ]; then
+                   local dir=$(dirname "$blockmap_file")
+                   local actual_basename=$(basename "$blockmap_file")
+                   local expected_blockmap_name="${expected_name}.blockmap"
+                   
+                   if [ "$actual_basename" != "$expected_blockmap_name" ]; then
+                      echo "Renaming '$actual_basename' to '$expected_blockmap_name'"
+                      mv "$blockmap_file" "$dir/$expected_blockmap_name"
+                   fi
+                fi
               else
                  echo "Could not extract path from $yml_file"
               fi
