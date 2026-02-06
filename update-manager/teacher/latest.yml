@@ -1,8 +1,8 @@
-version: 1.0.21
+version: 1.0.22
 files:
-  - url: Attentive Teacher Setup 1.0.21.exe
-    sha512: g1K4ry7cYgSwFUKLy4OwJNJ4BoIt/O58wcdGws3TknmDTJWum5TbpBytaJ8/xHfZtzp5LwvO3vQ+wPzZ0LHeOA==
-    size: 78319265
-path: Attentive Teacher Setup 1.0.21.exe
-sha512: g1K4ry7cYgSwFUKLy4OwJNJ4BoIt/O58wcdGws3TknmDTJWum5TbpBytaJ8/xHfZtzp5LwvO3vQ+wPzZ0LHeOA==
-releaseDate: '2026-02-06T10:47:13.000Z'
+  - url: Attentive Teacher Setup 1.0.22.exe
+    sha512: 5KB8bA43lFH8B8HEV6PMsbbUOvruG/XKEor9dI0QquF2bpSF3EXoG2X40FzsVKRfAwUpMXdYmmOXyClOIoe8xA==
+    size: 78319186
+path: Attentive Teacher Setup 1.0.22.exe
+sha512: 5KB8bA43lFH8B8HEV6PMsbbUOvruG/XKEor9dI0QquF2bpSF3EXoG2X40FzsVKRfAwUpMXdYmmOXyClOIoe8xA==
+releaseDate: '2026-02-06T11:11:08.552Z'
