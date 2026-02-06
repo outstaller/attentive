@@ -69,11 +69,21 @@ Var /GLOBAL BatchFile
     FileClose $9 ; Close main log before batch appends to it
 
     ; Execute the batch file as ADMIN (Trigger UAC) and WAIT
+    ; Re-open log for a second to say we are about to exec - actually we closed it to allow batch to append.
+    ; We can't write to it easily while closed. We'll trust the batch file output.
+    
+    ; ExecWait
     ExecWait 'powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Start-Process -FilePath $\"$BatchFile$\" -Verb RunAs -Wait"'
+    
+    ; Re-open log to confirm return
+    FileOpen $9 "$TEMP\attentive_migration.log" a
+    FileSeek $9 0 END
+    FileWrite $9 "Returned from ExecWait.$\r$\n"
     
     ; Mark as configured so we don't ask again
     WriteRegStr HKCU "Software\${PRODUCT_NAME}" "FirewallConfigured" "true"
     FileWrite $9 "Registry Key Written: HKCU\Software\${PRODUCT_NAME}\FirewallConfigured = true$\r$\n"
+    FileClose $9
     
   ${Else}
     DetailPrint "Firewall already configured. Skipping elevation."

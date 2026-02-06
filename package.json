@@ -4,7 +4,7 @@
   "description": "Classroom Management System",
   "main": "dist/main/main.js",
   "scripts": {
-    "build": "tsc && xcopy /y /s src\\ui\\index.html dist\\ui\\ && if not exist dist\\ui\\assets mkdir dist\\ui\\assets && xcopy /y /s src\\ui\\assets dist\\ui\\assets\\",
+    "build": "tsc && xcopy /y /s src\\ui\\index.html dist\\ui\\ && xcopy /y /s src\\ui\\splash.html dist\\ui\\ && if not exist dist\\ui\\assets mkdir dist\\ui\\assets && xcopy /y /s src\\ui\\assets dist\\ui\\assets\\",
     "start": "npm run build && electron .",
     "dist:teacher": "npm run build && electron-builder --config electron-builder-teacher.json",
     "dist:student": "npm run build && electron-builder --config electron-builder-student.json",
