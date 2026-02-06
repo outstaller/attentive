@@ -6,7 +6,9 @@ RequestExecutionLevel user
 !define EXEC_NAME "${PRODUCT_NAME}.exe"
 
 Var /GLOBAL BatchFile
-Var /GLOBAL PreviousVersion
+!ifndef BUILD_UNINSTALLER
+  Var /GLOBAL PreviousVersion
+!endif
 
 !include "WordFunc.nsh"
 !insertmacro VersionCompare
