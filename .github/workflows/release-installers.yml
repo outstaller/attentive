@@ -35,8 +35,10 @@ jobs:
         with:
           files: |
             release/teacher/*.exe
+            release/teacher/*.msi
             release/teacher/*.blockmap
             release/teacher/latest-teacher.yml
             release/student/*.exe
+            release/student/*.msi
             release/student/*.blockmap
             release/student/latest-student.yml

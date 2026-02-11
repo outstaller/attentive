@@ -12,9 +12,21 @@
         "appMode": "student"
     },
     "win": {
-        "target": "nsis",
+        "target": [
+            "nsis",
+            "msi"
+        ],
         "forceCodeSigning": false,
         "icon": "build/icon.png"
+    },
+    "msi": {
+        "oneClick": true,
+        "perMachine": false,
+        "runAfterFinish": true,
+        "additionalWixArgs": [
+            "-ext",
+            "WixUtilExtension.dll"
+        ]
     },
     "nsis": {
         "oneClick": true,
@@ -23,7 +35,11 @@
         "include": "build/installer.nsh"
     },
     "extraResources": [
-        "student.flag"
+        "student.flag",
+        {
+            "from": "build/elevate.exe",
+            "to": "elevate.exe"
+        }
     ],
     "publish": [
         {

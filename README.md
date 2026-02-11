@@ -63,7 +63,10 @@ On launch, select **"אני מורה" (Teacher)** or **"אני תלמיד" (Stud
 - `src/shared/`: Shared Types and Constants.
 
 ### Packaging
-We use `electron-builder` with NSIS to create installers that automatically configure Windows Firewall.
+We use `electron-builder` with NSIS and MSI to create installers. 
+
+- **MSI Installer**: Per-user installation, minimal UI. Handles firewall rules and automatically uninstalls legacy `v1.x` versions (machine-wide or per-user) before installation.
+- **NSIS Installer**: Standard setup experience.
 
 **Build Teacher Installer:**
 ```bash
@@ -75,11 +78,11 @@ npm run dist:teacher
 npm run dist:student
 ```
 
-The output installers will be in the `release/` directory.
+The output installers (`.exe` and `.msi`) will be in the `release/` directory.
 
 ## ⚠️ Important Notes
-- **Firewall**: The installer acts as a helper to configure Windows Firewall rules for "Attentive". If running from source, assume UDP Port `41234` and TCP Port `3000` need to be allowed.
-- **Kiosk Limitations**: On Windows/Mac, blocking system keys like `Ctrl+Alt+Del` or `Cmd+Option+Esc` requires lower-level OS permissions or signed drivers, which is out of scope for pure Electron. The current implementation uses "best effort" blocking suitable for standard classroom environments.
+- **Firewall**: The installers automatically configure Windows Firewall rules for "Attentive" using an elevated helper (`elevate.exe`). If running from source, assume UDP Port `41234` and TCP Port `3000`/`3001` need to be allowed.
+- **Legacy Migration**: The new MSI installers will automatically detect and uninstall previous versions matching `Attentive * 1.*` to ensure a clean transition to the per-user model.
 
 ## 🔄 Auto-Update Mechanism
 The application uses `electron-updater` with a generic provider hosted on GitHub Pages.
@@ -87,8 +90,8 @@ The application uses `electron-updater` with a generic provider hosted on GitHub
 ### Configuration
 1.  **Repo**: Updates are hosted at `https://outstaller.github.io/attentive/update-manager/`.
 2.  **Structure**:
-    - `.../update-manager/student/` -> Contains student updates
-    - `.../update-manager/teacher/` -> Contains teacher updates
+    - `.../update-manager/student/` -> Contains student updates (.exe, .msi, .blockmap, latest.yml)
+    - `.../update-manager/teacher/` -> Contains teacher updates (.exe, .msi, .blockmap, latest.yml)
 
 ### How to Deploy an Update
 1.  **Increment Version**: Update `version` in `package.json`.
@@ -98,9 +101,8 @@ The application uses `electron-updater` with a generic provider hosted on GitHub
     npm run dist:student
     ```
 3.  **Upload**:
-    - Copy the generated `.exe`, `.blockmap`, and `latest.yml` files from `release/teacher` to your GitHub Pages `update-manager/teacher` folder.
-    - Do the same for student files in `update-manager/student`.
-4.  **Push**: Commit and push changes to GitHub. The apps will detect the new version on next launch (or within 1 hour).
+    - The GitHub Actions workflow automatically uploads the generated `.exe`, `.msi`, `.blockmap`, and `latest.yml` files to the GitHub Release and organizes them on the `gh-pages` branch.
+    - If deploying manually, ensure all assets are copied to the respective folders under `update-manager/`.
 
 ## 📜 License
 ISC
