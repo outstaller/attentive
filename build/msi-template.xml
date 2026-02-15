@@ -4,15 +4,13 @@
   <Product Id="*" Name="${productName}" UpgradeCode="${upgradeCode}" Version="${version}" Language="1033" Codepage="65001" Manufacturer="${manufacturer}">
     <Package InstallerVersion="500" Compressed="yes"/>
 
-    <!-- Custom Action to Uninstall Legacy versions (v1.x machine-wide) -->
-    <CustomAction Id="LegacyUninstall" Directory="TARGETDIR" ExeCommand="powershell -NoProfile -ExecutionPolicy Bypass -Command &quot;Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*, HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*, HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like '${productName} 1.*' } | ForEach-Object { $u = $_.UninstallString; if ($u) { Start-Process -FilePath 'cmd.exe' -ArgumentList ('/c ' + $u + ' /S') -Verb RunAs -Wait } }&quot;" Execute="immediate" Return="check" />
-
-    <!-- Firewall Custom Actions -->
-    <CustomAction Id="FirewallAdd" Directory="TARGETDIR" ExeCommand="&quot;[APPLICATIONFOLDER]resources\elevate.exe&quot; -wait netsh advfirewall firewall add rule name=\&quot;${productName}\&quot; dir=in action=allow program=\&quot;[#mainExecutable]\&quot; enable=yes profile=any" Execute="deferred" Return="check" Impersonate="yes" />
+    <!-- Firewall Custom Actions (MSI runs elevated, no elevate.exe needed) -->
+    <CustomAction Id="FirewallAdd" Directory="TARGETDIR" ExeCommand="netsh advfirewall firewall add rule name=\&quot;${productName}\&quot; dir=in action=allow program=\&quot;[#mainExecutable]\&quot; enable=yes profile=any" Execute="deferred" Return="ignore" Impersonate="no" />
+    <CustomAction Id="FirewallRemove" Directory="TARGETDIR" ExeCommand="netsh advfirewall firewall delete rule name=\&quot;${productName}\&quot;" Execute="deferred" Return="ignore" Impersonate="no" />
 
     <InstallExecuteSequence>
-      <Custom Action="LegacyUninstall" After="CostFinalize">NOT Installed</Custom>
       <Custom Action="FirewallAdd" Before="InstallFinalize">NOT Installed</Custom>
+      <Custom Action="FirewallRemove" After="InstallInitialize">(REMOVE="ALL") AND (NOT UPGRADINGPRODUCTCODE)</Custom>
     </InstallExecuteSequence>
 
     <Condition Message="Windows 7 and above is required"><![CDATA[Installed OR VersionNT >= 601]]></Condition>
@@ -22,7 +20,7 @@
 
     <Property Id="WIXUI_INSTALLDIR" Value="APPLICATIONFOLDER"/>
     <Property Id="ApplicationFolderName" Value="${installationDirectoryWixName}"/>
-    <Property Id="WixAppFolder" Value="WixPerUserFolder"/>
+    <Property Id="WixAppFolder" Value="WixPerMachineFolder"/>
     <Property Id="DISABLEADVTSHORTCUTS" Value="1"/>
 
     {{ if (iconPath) { }}
@@ -45,7 +43,7 @@
     {{ } else { }}
       <Property Id="ALLUSERS" Secure="yes" Value="2"/>
     {{ } -}}
-    <Property Id="MSIINSTALLPERUSER" Secure="yes" Value="1"/>
+    <Property Id="MSIINSTALLPERUSER" Secure="yes" Value="0"/>
 
     {{ if (isAssisted) { }}
       <WixVariable Id="WixUISupportPerUser" Value="1" Overridable="yes"/>

@@ -37,7 +37,7 @@ jobs:
           mkdir -p gh-pages/update-manager/teacher
           mkdir -p gh-pages/update-manager/student
           
-          # Clean up old installers to prevent repository bloat (2.3GB artifact issue)
+          # Clean up old auto-update files (NSIS .exe only - MSI not needed for auto-update)
           echo "Cleaning up old artifacts..."
           rm -f gh-pages/update-manager/teacher/*.exe
           rm -f gh-pages/update-manager/teacher/*.blockmap
@@ -107,18 +107,16 @@ jobs:
           fix_filename "assets/latest-teacher.yml" "Teacher"
           fix_filename "assets/latest-student.yml" "Student"
 
-          # Teacher
-          find assets -name "*Teacher*.exe" -exec mv {} gh-pages/update-manager/teacher/ \;
-          find assets -name "*Teacher*.msi" -exec mv {} gh-pages/update-manager/teacher/ \;
-          find assets -name "*Teacher*.blockmap" -exec mv {} gh-pages/update-manager/teacher/ \;
+          # Teacher (NSIS .exe + blockmap + latest.yml only - for auto-update)
+          find assets -name "*Teacher Setup*.exe" -exec mv {} gh-pages/update-manager/teacher/ \;
+          find assets -name "*Teacher Setup*.blockmap" -exec mv {} gh-pages/update-manager/teacher/ \;
           if [ -f "assets/latest-teacher.yml" ]; then
             mv assets/latest-teacher.yml gh-pages/update-manager/teacher/latest.yml
           fi
 
-          # Student
-          find assets -name "*Student*.exe" -exec mv {} gh-pages/update-manager/student/ \;
-          find assets -name "*Student*.msi" -exec mv {} gh-pages/update-manager/student/ \;
-          find assets -name "*Student*.blockmap" -exec mv {} gh-pages/update-manager/student/ \;
+          # Student (NSIS .exe + blockmap + latest.yml only - for auto-update)
+          find assets -name "*Student Setup*.exe" -exec mv {} gh-pages/update-manager/student/ \;
+          find assets -name "*Student Setup*.blockmap" -exec mv {} gh-pages/update-manager/student/ \;
           if [ -f "assets/latest-student.yml" ]; then
             mv assets/latest-student.yml gh-pages/update-manager/student/latest.yml
           fi

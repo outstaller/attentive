@@ -22,8 +22,13 @@ jobs:
 
       - run: npm ci
 
+      # Standard builds (NSIS + MSI)
       - run: npm run dist:student -- --publish never
       - run: npm run dist:teacher -- --publish never
+
+      # GPO builds (MSI only)
+      - run: npm run dist:student:gpo -- --publish never
+      - run: npm run dist:teacher:gpo -- --publish never
 
       - name: Rename latest.yml for Release
         run: |
@@ -42,3 +47,5 @@ jobs:
             release/student/*.msi
             release/student/*.blockmap
             release/student/latest-student.yml
+            release/student-gpo/*.msi
+            release/teacher-gpo/*.msi

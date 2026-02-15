@@ -1,19 +1,18 @@
 {
-    "appId": "com.attentive.student",
-    "productName": "Attentive Student",
+    "appId": "com.attentive.teacher",
+    "productName": "Attentive Teacher",
     "directories": {
-        "output": "release/student"
+        "output": "release/teacher-gpo"
     },
     "files": [
         "dist/**/*",
         "package.json"
     ],
     "extraMetadata": {
-        "appMode": "student"
+        "appMode": "teacher"
     },
     "win": {
         "target": [
-            "nsis",
             "msi"
         ],
         "forceCodeSigning": false,
@@ -22,29 +21,32 @@
     "msi": {
         "oneClick": true,
         "perMachine": true,
-        "runAfterFinish": true,
+        "runAfterFinish": false,
         "additionalWixArgs": [
             "-ext",
             "WixUtilExtension.dll"
-        ]
-    },
-    "nsis": {
-        "oneClick": true,
-        "perMachine": true,
-        "runAfterFinish": true,
-        "include": "build/installer.nsh"
+        ],
+        "artifactName": "${productName} GPO ${version}.${ext}"
     },
     "extraResources": [
-        "student.flag",
+        "teacher.flag",
+        {
+            "from": "build/gpo.flag",
+            "to": "gpo.flag"
+        },
         {
             "from": "build/elevate.exe",
             "to": "elevate.exe"
+        },
+        {
+            "from": "build/app-update-teacher.yml",
+            "to": "app-update.yml"
         }
     ],
     "publish": [
         {
             "provider": "generic",
-            "url": "https://outstaller.github.io/attentive/update-manager/student/"
+            "url": "https://outstaller.github.io/attentive/update-manager/teacher/"
         }
     ]
 }

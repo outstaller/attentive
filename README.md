@@ -63,46 +63,44 @@ On launch, select **"אני מורה" (Teacher)** or **"אני תלמיד" (Stud
 - `src/shared/`: Shared Types and Constants.
 
 ### Packaging
-We use `electron-builder` with NSIS and MSI to create installers. 
+We use `electron-builder` to create MSI installers for distribution and NSIS `.exe` for auto-updates.
 
-- **MSI Installer**: Per-user installation, minimal UI. Handles firewall rules and automatically uninstalls legacy `v1.x` versions (machine-wide or per-user) before installation.
-- **NSIS Installer**: Standard setup experience.
+#### Standard Installers (BYOD)
+Per-machine MSI with firewall rules, all-users shortcuts, and auto-updates enabled.
 
-**Build Teacher Installer:**
 ```bash
-npm run dist:teacher
+npm run dist:student      # Student MSI + NSIS
+npm run dist:teacher      # Teacher MSI + NSIS
 ```
 
-**Build Student Installer:**
+#### GPO Installers (School Managed)
+Per-machine MSI with firewall rules and all-users shortcuts, but **auto-updates disabled**. IT admins push new MSI versions via GPO.
+
 ```bash
-npm run dist:student
+npm run dist:student:gpo  # Student GPO MSI (no auto-update)
+npm run dist:teacher:gpo  # Teacher GPO MSI (no auto-update)
 ```
 
-The output installers (`.exe` and `.msi`) will be in the `release/` directory.
+Output: `release/student/`, `release/teacher/`, `release/student-gpo/`, `release/teacher-gpo/`.
 
 ## ⚠️ Important Notes
-- **Firewall**: The installers automatically configure Windows Firewall rules for "Attentive" using an elevated helper (`elevate.exe`). If running from source, assume UDP Port `41234` and TCP Port `3000`/`3001` need to be allowed.
-- **Legacy Migration**: The new MSI installers will automatically detect and uninstall previous versions matching `Attentive * 1.*` to ensure a clean transition to the per-user model.
+- **Firewall**: MSI installers configure Windows Firewall rules automatically during installation (runs elevated).
+- **GPO Mode**: Installers with `gpo.flag` in resources skip auto-update checks. Updates are managed via GPO by replacing the MSI.
+- If running from source, allow UDP Port `41234` and TCP Port `3000`/`3001`.
 
 ## 🔄 Auto-Update Mechanism
 The application uses `electron-updater` with a generic provider hosted on GitHub Pages.
+Auto-update uses the NSIS `.exe` (hidden from users) to apply updates to `Program Files`.
 
 ### Configuration
-1.  **Repo**: Updates are hosted at `https://outstaller.github.io/attentive/update-manager/`.
+1.  **Repo**: Updates hosted at `https://outstaller.github.io/attentive/update-manager/`.
 2.  **Structure**:
-    - `.../update-manager/student/` -> Contains student updates (.exe, .msi, .blockmap, latest.yml)
-    - `.../update-manager/teacher/` -> Contains teacher updates (.exe, .msi, .blockmap, latest.yml)
+    - `.../update-manager/student/` -> NSIS `.exe`, `.blockmap`, `latest.yml`
+    - `.../update-manager/teacher/` -> NSIS `.exe`, `.blockmap`, `latest.yml`
 
 ### How to Deploy an Update
 1.  **Increment Version**: Update `version` in `package.json`.
-2.  **Build**:
-    ```bash
-    npm run dist:teacher
-    npm run dist:student
-    ```
-3.  **Upload**:
-    - The GitHub Actions workflow automatically uploads the generated `.exe`, `.msi`, `.blockmap`, and `latest.yml` files to the GitHub Release and organizes them on the `gh-pages` branch.
-    - If deploying manually, ensure all assets are copied to the respective folders under `update-manager/`.
+2.  **Tag and Push**: Create a `v*` tag. GitHub Actions builds all 6 installers, uploads to Release, and publishes NSIS files to GitHub Pages for auto-update.
 
 ## 📜 License
 ISC

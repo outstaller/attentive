@@ -2,7 +2,7 @@
     "appId": "com.attentive.student",
     "productName": "Attentive Student",
     "directories": {
-        "output": "release/student"
+        "output": "release/student-gpo"
     },
     "files": [
         "dist/**/*",
@@ -13,7 +13,6 @@
     },
     "win": {
         "target": [
-            "nsis",
             "msi"
         ],
         "forceCodeSigning": false,
@@ -22,23 +21,26 @@
     "msi": {
         "oneClick": true,
         "perMachine": true,
-        "runAfterFinish": true,
+        "runAfterFinish": false,
         "additionalWixArgs": [
             "-ext",
             "WixUtilExtension.dll"
-        ]
-    },
-    "nsis": {
-        "oneClick": true,
-        "perMachine": true,
-        "runAfterFinish": true,
-        "include": "build/installer.nsh"
+        ],
+        "artifactName": "${productName} GPO ${version}.${ext}"
     },
     "extraResources": [
         "student.flag",
         {
+            "from": "build/gpo.flag",
+            "to": "gpo.flag"
+        },
+        {
             "from": "build/elevate.exe",
             "to": "elevate.exe"
+        },
+        {
+            "from": "build/app-update-student.yml",
+            "to": "app-update.yml"
         }
     ],
     "publish": [

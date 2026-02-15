@@ -21,7 +21,7 @@
     },
     "msi": {
         "oneClick": true,
-        "perMachine": false,
+        "perMachine": true,
         "runAfterFinish": true,
         "additionalWixArgs": [
             "-ext",
@@ -30,7 +30,7 @@
     },
     "nsis": {
         "oneClick": true,
-        "perMachine": false,
+        "perMachine": true,
         "runAfterFinish": true,
         "include": "build/installer.nsh"
     },

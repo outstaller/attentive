@@ -18,9 +18,14 @@ import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
 
 // Configure Logging based on App Mode
+// Parse update URL override from command line (e.g., --update-url http://localhost:5000)
+const updateUrlArg = process.argv.find(arg => arg.startsWith('--update-url='));
+const updateUrlOverride = updateUrlArg ? updateUrlArg.split('=')[1] : null;
+
 const resourcesPath = process.resourcesPath;
 const isStudent = fs.existsSync(path.join(resourcesPath, 'student.flag'));
 const isTeacher = fs.existsSync(path.join(resourcesPath, 'teacher.flag'));
+const isGpo = fs.existsSync(path.join(resourcesPath, 'gpo.flag'));
 
 if (isStudent) {
     log.transports.file.fileName = 'student.log';
@@ -140,7 +145,24 @@ app.whenReady().then(() => {
         setTimeout(launchApp, 1500);
     });
 
-    // 3. Update Available -> Update Splash Text
+    // 3. Configure Auto-Download and URL Override
+    autoUpdater.autoDownload = true;
+
+    if (updateUrlOverride) {
+        log.info('Overriding update URL:', updateUrlOverride);
+        autoUpdater.setFeedURL({
+            provider: 'generic',
+            url: updateUrlOverride
+        });
+    }
+
+    autoUpdater.on('checking-for-update', () => {
+        log.info('Update Check: Checking...');
+        if (splashWindow && !splashWindow.isDestroyed()) {
+            splashWindow.webContents.send('splash-status', 'בודק אם קיים עדכון...'); // "Checking for update..."
+        }
+    });
+
     autoUpdater.on('update-available', () => {
         log.info('Update found! Downloading...');
         if (splashWindow && !splashWindow.isDestroyed()) {
@@ -180,8 +202,12 @@ app.whenReady().then(() => {
     });
 
     // Trigger Check
+    // Trigger Check
     if (!app.isPackaged) {
         log.info('Dev Mode: Skipping update check. Launching app...');
+        setTimeout(launchApp, 500);
+    } else if (isGpo && !updateUrlOverride) {
+        log.info('GPO Mode: Auto-update disabled. Launching app...');
         setTimeout(launchApp, 500);
     } else {
         autoUpdater.checkForUpdates().catch((e) => {
@@ -190,13 +216,14 @@ app.whenReady().then(() => {
         });
     }
 
-    // Fallback Polling (if app stays open long enough)
-    setInterval(() => {
-        // For subsequent background checks, we use standard checking without splash
-        autoUpdater.checkForUpdatesAndNotify().catch((e) => {
-            log.warn('Scheduled update check failed:', e.message);
-        });
-    }, 60 * 60 * 1000);
+    // Fallback Polling (if app stays open long enough) - skip for GPO
+    if (!isGpo) {
+        setInterval(() => {
+            autoUpdater.checkForUpdatesAndNotify().catch((e) => {
+                log.warn('Scheduled update check failed:', e.message);
+            });
+        }, 60 * 60 * 1000);
+    }
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) createWindow();

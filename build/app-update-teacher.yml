@@ -1,0 +1,3 @@
+provider: generic
+url: https://outstaller.github.io/attentive/update-manager/teacher/
+updaterCacheDirName: attentive-cms-updater
